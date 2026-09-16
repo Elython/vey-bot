@@ -1,0 +1,44 @@
+{
+  "name": "veyra-bot-client",
+  "productName": "Veybot",
+  "version": "1.2.0",
+  "description": "Compact API-driven Electron automation client with dry-run safety and human-assisted challenges",
+  "main": "src/main/index.js",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win portable --x64"
+  },
+  "keywords": [
+    "electron",
+    "game-bot",
+    "automation",
+    "demonicscans"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^34.2.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "org.veybot.client",
+    "productName": "Veybot",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "Veybot-${version}-portable.${ext}"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+node_modules/
+data/sessions.json
+.env
+*.log
+data
+release

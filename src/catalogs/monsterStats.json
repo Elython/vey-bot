@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "monsters": {
+    "grakthar_3": {
+      "lizardman_vanguard": {
+        "areaKey": "grakthar_3",
+        "monsterKey": "lizardman_vanguard",
+        "name": "Lizardman Vanguard",
+        "stats": {
+          "attack": 300,
+          "defense": 300,
+          "petDefense": 150,
+          "equipmentDefense": 150,
+          "element": "None",
+          "elementRatePercent": 0,
+          "rewardsUpToLevel": 4500,
+          "resistances": {
+            "critRatePercent": 0,
+            "critDamagePercent": 0,
+            "finalDamagePercent": 0,
+            "passiveDamagePercent": 0
+          }
+        },
+        "provenance": {
+          "source": "screen/monster stats/Battle.html",
+          "observedMonsterId": "545643707",
+          "observedAt": "2026-09-13",
+          "schemaVersion": 1
+        }
+      }
+    }
+  }
+}
