@@ -1,12 +1,20 @@
 {
   "name": "veyra-bot-client",
   "productName": "Veybot",
-  "version": "1.2.0",
+  "version": "2.5.2",
   "description": "Compact API-driven Electron automation client with dry-run safety and human-assisted challenges",
   "main": "src/main/index.js",
   "scripts": {
+    "build:renderer": "node scripts/buildRenderer.js",
+    "check:renderer": "node scripts/buildRenderer.js --check",
+    "prepack": "npm run build:renderer",
+    "prestart": "npm run build:renderer",
     "start": "electron .",
-    "dist:win": "electron-builder --win portable --x64"
+    "predry-run:live": "npm run build:renderer",
+    "pretest": "npm run check:renderer",
+    "test": "node test/runTests.js",
+    "dry-run:live": "electron test/liveDryRun.js",
+    "dist:win": "npm run build:renderer && npm test && electron-builder --win nsis --x64"
   },
   "keywords": [
     "electron",
@@ -20,25 +28,37 @@
     "electron": "^34.2.0",
     "electron-builder": "^26.15.3"
   },
+  "dependencies": {
+    "lucide": "^1.48.0"
+  },
   "build": {
-    "appId": "org.veybot.client",
+    "appId": "com.veybot.client",
     "productName": "Veybot",
     "asar": true,
     "directories": {
-      "output": "release"
+      "output": "dist"
     },
     "files": [
       "src/**/*",
-      "package.json"
+      "package.json",
+      "node_modules/lucide/**/*"
     ],
     "win": {
       "target": [
         {
-          "target": "portable",
-          "arch": ["x64"]
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
         }
-      ],
-      "artifactName": "Veybot-${version}-portable.${ext}"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     }
   }
 }

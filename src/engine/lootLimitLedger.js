@@ -1,4 +1,4 @@
-const { deepMerge, validateConfig } = require('./configManager');
+const { deepMerge } = require('./configManager');
 
 class LootLimitLedger {
   constructor(config, configManager = null) {
@@ -38,9 +38,8 @@ class LootLimitLedger {
     const patch = {
       looting: { maps: { [target.areaKey]: { [target.monsterKey]: { lootedCount, lootedInstanceIds } } } },
     };
-    this.config = this.configManager
-      ? this.configManager.update(patch)
-      : validateConfig(deepMerge(this.config, patch));
+    if (this.configManager) this.configManager.update(patch);
+    this.config = deepMerge(this.config, patch);
     return { config: this.config, lootedCount, duplicate: false };
   }
 }

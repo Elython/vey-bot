@@ -1,0 +1,106 @@
+      <!-- SCREEN 4: Monster configuration -->
+      <section id="viewNPCConfig" class="view-panel" style="display: none;">
+        <div class="subtabs-bar workspace-subtabs">
+          <button class="subtab-btn active" id="subtabTargetsConfigBtn" type="button">Targets</button>
+          <button class="subtab-btn" id="subtabTargetsHistoryBtn" type="button">History</button>
+        </div>
+        <div id="subviewTargetsConfig" class="workspace-subview">
+          <div class="panel-header-row">
+            <div>
+              <div class="panel-header">Targets</div>
+            </div>
+            <div class="workspace-area-toolbar">
+              <label for="targetAreaTypeSelect">Type</label>
+              <select id="targetAreaTypeSelect" class="workspace-area-type-select" aria-label="Target area type">
+                <option value="gate">Gate</option>
+                <option value="dungeon">Dungeon</option>
+                <option value="event">Event</option>
+              </select>
+              <label for="targetAreaSelect">Area</label>
+              <select id="targetAreaSelect" class="workspace-area-select" aria-label="Target area"></select>
+              <button id="btnCollectMonsterStats" class="btn btn-sm"
+                title="Collect verified stats for this area">Collect
+                stats</button>
+              <button id="btnRefreshMonsterArea" class="btn btn-primary btn-sm workspace-icon-btn" type="button"
+                title="Refresh targets" aria-label="Refresh targets"><i data-lucide="rotate-cw"></i></button>
+            </div>
+          </div>
+          <div id="monsterAreaContent" class="monster-config-content">
+            <div class="empty-state">Choose a gate, dungeon, or event.</div>
+          </div>
+          <section id="cubePvpTargetPanel" class="cube-pvp-target-panel" style="display:none;">
+            <div class="panel-header-row">
+              <div>
+                <div class="panel-header">Cube PvP matches</div>
+                <span id="cubePvpTargetStatus" class="workspace-load-status" aria-live="polite"></span>
+              </div>
+              <div class="cube-pvp-target-toolbar">
+                <button id="btnRefreshCubePvpTargets" class="btn btn-primary btn-sm workspace-icon-btn" type="button"
+                  title="Refresh Cube PvP matches" aria-label="Refresh Cube PvP matches"><i data-lucide="rotate-cw"></i></button>
+              </div>
+            </div>
+            <div class="tree-form-container cube-pvp-settings">
+              <div class="form-tree-row">
+                <label class="form-tree-label" for="chkCubePvpEnabled">Join Cube PvP</label>
+                <div class="form-tree-control"><input id="chkCubePvpEnabled" class="tree-checkbox" type="checkbox"></div>
+              </div>
+              <div class="form-tree-row">
+                <label class="form-tree-label" for="selectCubePvpMode">PvP module</label>
+                <div class="form-tree-control"><select id="selectCubePvpMode" class="tree-select">
+                  <option value="server_ai">Server AI</option>
+                  <option value="custom" disabled>Custom strategy (future)</option>
+                </select></div>
+              </div>
+              <div class="form-tree-row">
+                <label class="form-tree-label" for="inputCubePvpRecheck">Post-cooldown recheck</label>
+                <div class="form-tree-control input-unit-group"><input id="inputCubePvpRecheck" class="tree-input-sm" type="number" min="1" max="60"><span class="unit-label">min</span></div>
+              </div>
+              <p class="compact-help">Server AI joins an allowed OPEN match and keeps one authenticated match page connected in the background. It runs only while Bot Setup uses Dungeons → Cube.</p>
+            </div>
+            <div id="cubePvpTargetContent" class="cube-pvp-target-content">
+              <div class="empty-state">Refresh to read Cube PvP matches.</div>
+            </div>
+          </section>
+        </div>
+        <div id="subviewTargetsAutoFarm" class="workspace-subview" style="display: none;">
+          <div class="panel-header-row">
+            <div>
+              <div class="panel-header">Add Auto Farm targets</div><span id="autoFarmTargetStatus"
+                class="workspace-load-status" aria-live="polite"></span>
+            </div>
+            <div class="workspace-area-toolbar"><label for="autoFarmTargetAreaTypeSelect">Type</label><select
+                id="autoFarmTargetAreaTypeSelect" class="workspace-area-type-select">
+                <option value="gate">Gate</option>
+                <option value="event">Event</option>
+              </select><label for="autoFarmTargetAreaSelect">Area</label><select id="autoFarmTargetAreaSelect"
+                class="workspace-area-select"></select><button id="btnRefreshAutoFarmTargets"
+                class="btn btn-primary btn-sm workspace-icon-btn" type="button" title="Refresh Auto Farm targets"
+                aria-label="Refresh Auto Farm targets"><i data-lucide="rotate-cw"></i></button><button
+                id="btnSaveAutoFarmTargets" class="btn btn-primary btn-sm" type="button">Add</button></div>
+          </div>
+          <div id="autoFarmTargetContent" class="monster-config-content">
+            <div class="empty-state">Choose a Gate or Event.</div>
+          </div>
+        </div>
+        <div id="subviewTargetsHistory" class="workspace-subview" style="display: none;">
+          <div class="panel-header-row">
+            <div>
+              <div class="panel-header">Target history</div><span id="targetHistoryStatus" class="workspace-load-status"
+                aria-live="polite"></span>
+            </div>
+            <div class="workspace-area-toolbar"><label for="targetHistoryAreaTypeSelect">Type</label><select
+                id="targetHistoryAreaTypeSelect" class="workspace-area-type-select">
+                <option value="gate">Gate</option>
+                <option value="dungeon">Dungeon</option>
+                <option value="event">Event</option>
+              </select><label for="targetHistoryAreaSelect">Area</label><select id="targetHistoryAreaSelect"
+                class="workspace-area-select"></select><button id="btnRefreshTargetHistory"
+                class="btn btn-primary btn-sm workspace-icon-btn" type="button" title="Refresh target history"
+                aria-label="Refresh target history"><i data-lucide="rotate-cw"></i></button></div>
+          </div>
+          <pre id="targetHistoryConsole" class="activity-latest-console" aria-live="polite">No attacks recorded.</pre>
+          <div id="targetHistoryContent" class="monster-config-content activity-history-content">
+            <div class="empty-state">No attacks recorded for this account.</div>
+          </div>
+        </div>
+      </section>

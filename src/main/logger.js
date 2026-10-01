@@ -1,8 +1,8 @@
 const fs = require('fs');
 const path = require('path');
-const { getDataDir } = require('./paths');
 
 const EventEmitter = require('events');
+const { getDataDir } = require('./dataPaths');
 
 class Logger extends EventEmitter {
   constructor() {
@@ -12,6 +12,7 @@ class Logger extends EventEmitter {
       fs.mkdirSync(this.logsDir, { recursive: true });
     }
     this.maxLogBytes = 2 * 1024 * 1024;
+    this.pendingWrites = new Set();
   }
 
   getServerTimeString() {
@@ -107,6 +108,26 @@ class Logger extends EventEmitter {
     return this.getClientLogs(accountName);
   }
 
+  async whenIdle() {
+    while (this.pendingWrites.size > 0) {
+      await Promise.all([...this.pendingWrites]);
+    }
+  }
+
+  async deleteAccountLogs(accountName) {
+    if (!accountName) return 0;
+    await this.whenIdle();
+    const safeName = accountName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    let removed = 0;
+    for (const suffix of ['user.log', 'user.log.1', 'client.log', 'client.log.1', 'auto.log', 'auto.log.1']) {
+      const filePath = path.join(this.logsDir, `${safeName}_${suffix}`);
+      if (!fs.existsSync(filePath)) continue;
+      fs.unlinkSync(filePath);
+      removed += 1;
+    }
+    return removed;
+  }
+
   _redact(value) {
     return String(value ?? '')
       .replace(/((?:cookie|authorization|csrf(?:_token)?|request_token|useruid)\s*[:=]\s*)[^\s,;&]+/gi, '$1[REDACTED]');
@@ -119,11 +140,26 @@ class Logger extends EventEmitter {
         if (fs.existsSync(rotatedPath)) fs.unlinkSync(rotatedPath);
         fs.renameSync(filePath, rotatedPath);
       }
-      fs.appendFile(filePath, line, { encoding: 'utf8', mode: 0o600 }, err => {
-        if (err) console.error('Failed to write log:', err);
+      const pending = new Promise(resolve => {
+        fs.appendFile(filePath, line, { encoding: 'utf8', mode: 0o600 }, err => {
+          if (err) console.error('Failed to write log:', err);
+          resolve();
+        });
       });
+      this.pendingWrites.add(pending);
+      pending.finally(() => this.pendingWrites.delete(pending));
     } catch (error) {
       console.error('Failed to rotate log:', error);
+    }
+  }
+  /**
+   * Reinitialize the logs directory after app.getPath becomes available.
+   * @param {string} [dataDir]
+   */
+  init(dataDir) {
+    this.logsDir = path.join(dataDir || getDataDir(), 'logs');
+    if (!fs.existsSync(this.logsDir)) {
+      fs.mkdirSync(this.logsDir, { recursive: true });
     }
   }
 }

@@ -708,6 +708,102 @@ function parseStatsPage(html) {
   return stats;
 }
 
+function parseAutoFarmPanel(html) {
+  const source = String(html || '');
+  if (!/id=["']autoFarmPanel["']/i.test(source)) {
+    return { recognized: false, enabled: false, settings: {}, counters: {}, targets: [], monsters: [] };
+  }
+  const inputNumber = id => {
+    const tag = source.match(new RegExp(`<input\\b[^>]*id=["']${id}["'][^>]*>`, 'i'))?.[0] || '';
+    return parseNumber(parseAttributes(tag.replace(/^<input\s*|>$/gi, '')).value);
+  };
+  const selectedValue = (block, className) => {
+    const select = elementBlocks(block, 'select', className)[0]?.html || '';
+    const selected = select.match(/<option\b([^>]*)selected[^>]*>([\s\S]*?)<\/option>/i);
+    if (!selected) return { value: null, label: '' };
+    const attributes = parseAttributes(selected[1]);
+    return { value: attributes.value ?? null, label: stripTags(selected[2]) };
+  };
+  const selectById = id => {
+    const match = source.match(new RegExp(`<select\\b[^>]*id=["']${id}["'][^>]*>([\\s\\S]*?)<\\/select>`, 'i'));
+    if (!match) return null;
+    const selected = match[1].match(/<option\b([^>]*)selected[^>]*>/i) || match[1].match(/<option\b([^>]*)>/i);
+    return selected ? parseAttributes(selected[1]).value ?? null : null;
+  };
+  const textNumber = id => {
+    const value = source.match(new RegExp(`id=["']${id}["'][^>]*>([\\s\\S]*?)<`, 'i'))?.[1] || '';
+    return parseNumber(stripTags(value));
+  };
+
+  const monsters = new Map();
+  const availableMonsters = new Map();
+  for (const select of source.matchAll(/<select\b[^>]*class=["'][^"']*\bafTMonster\b[^"']*["'][^>]*>([\s\S]*?)<\/select>/gi)) {
+    for (const match of select[1].matchAll(/<option\b([^>]*)>([\s\S]*?)<\/option>/gi)) {
+      const attributes = parseAttributes(match[1]);
+      if (!/^\d+$/.test(String(attributes.value || ''))) continue;
+      const name = stripTags(match[2]);
+      if (name && !monsters.has(String(attributes.value))) monsters.set(String(attributes.value), name);
+    }
+  }
+  for (const option of source.matchAll(/<label\b[^>]*>[\s\S]*?<input\b([^>]*)class=["'][^"']*\baf-ms-check\b[^"']*["']([^>]*)>[\s\S]*?<span\b[^>]*>([\s\S]*?)<\/span>[\s\S]*?<\/label>/gi)) {
+    const attributes = parseAttributes(`${option[1]} ${option[2]}`);
+    const id = String(attributes.value || '');
+    const name = stripTags(option[3]);
+    if (/^\d+$/.test(id) && name) {
+      availableMonsters.set(id, name);
+      if (!monsters.has(id)) monsters.set(id, name);
+    }
+  }
+
+  const targets = [];
+  for (const row of elementBlocks(source, 'div', 'af-row')) {
+    const targetId = row.attributes['data-target-id'];
+    const monster = selectedValue(row.html, 'afTMonster');
+    if (!/^\d+$/.test(String(targetId || '')) || !/^\d+$/.test(String(monster.value || ''))) continue;
+    targets.push({
+      targetId: String(targetId),
+      monsterId: String(monster.value),
+      monsterName: monster.label || monsters.get(String(monster.value)) || '',
+      enabled: selectedValue(row.html, 'afTEnabled').value === '1',
+      damageMode: Number(selectedValue(row.html, 'afTMode').value) === 1 ? 1 : 0,
+      minDamage: parseNumber(elementBlocks(row.html, 'input', 'afTMin')[0]?.attributes?.value) || 0,
+      maxStack: Math.max(1, parseNumber(elementBlocks(row.html, 'input', 'afTStack')[0]?.attributes?.value) || 1),
+    });
+  }
+  const stateText = stripTags(source.match(/id=["']afStateBadge["'][^>]*>([\s\S]*?)<\/[^>]+>/i)?.[1] || '');
+  return {
+    recognized: true,
+    enabled: /running|active|started/i.test(stateText) && !/paused|off/i.test(stateText),
+    settings: {
+      totalMonsters: inputNumber('afTotalToKill') || 0,
+      hpPotionLimit: inputNumber('afHpMax') || 0,
+      staminaPotionLimits: {
+        small: inputNumber('afSt20Max') || 0,
+        large: inputNumber('afStHalfMax') || 0,
+        full: inputNumber('afStFullMax') || 0,
+        adventure: inputNumber('afStAdvMax') || 0,
+      },
+      priorityItemId: selectById('afStPriority') || '0',
+      autoLootToLevel: selectById('afAutoLootToLevel') === '1',
+      expLeftPercent: inputNumber('afPrcExpLeft') ?? 100,
+    },
+    counters: {
+      monsters: textNumber('afTotalKilledText') || 0,
+      hpPotions: textNumber('afHpUsedText') || 0,
+      staminaPotions: {
+        small: textNumber('afSt20UsedText') || 0,
+        large: textNumber('afStHalfUsedText') || 0,
+        full: textNumber('afStFullUsedText') || 0,
+        adventure: textNumber('afStAdvUsedText') || 0,
+      },
+    },
+    targets,
+    monsters: [...monsters].map(([id, name]) => ({ id, name })),
+    availableMonsters: [...(availableMonsters.size > 0 ? availableMonsters : monsters)]
+      .map(([id, name]) => ({ id, name })),
+  };
+}
+
 function parseGates(html) {
   const gates = [];
   const regex = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
@@ -734,6 +830,8 @@ function parseWaveMonsters(html) {
     const hpMatch = block.html.match(/class=["'][^"']*\bstat-value\b[^"']*["'][^>]*>\s*([\d,]+)\s*\/\s*([\d,]+)/i);
     const linkMatch = block.html.match(/href=["'][^"']*battle\.php\?id=(\d+)[^"']*["']/i);
     const headingMatch = block.html.match(/<h3\b[^>]*>([\s\S]*?)<\/h3>/i);
+    const imageMatch = block.html.match(/<img\b[^>]*class=["'][^"']*\bmonster-img\b[^"']*["'][^>]*src=["']([^"']+)["']/i)
+      || block.html.match(/<img\b[^>]*src=["']([^"']+)["'][^>]*class=["'][^"']*\bmonster-img\b[^"']*["']/i);
     const actionButtons = [...block.html.matchAll(/<button\b[^>]*class=["'][^"']*\bjoin-btn\b[^"']*["'][^>]*>([\s\S]*?)<\/button>/gi)];
     const hasLootAction = actionButtons.some(match => /\bLoot\b/i.test(stripTags(match[1])));
     const stackLabel = findClassValue(block.html, 'stack-badge') || '';
@@ -741,11 +839,21 @@ function parseWaveMonsters(html) {
     const stackSize = Math.max(1, stackMatch ? (parseNumber(stackMatch[1]) || 1) : 1);
     const dead = attrs['data-dead'] === '1';
     const eligible = attrs['data-eligible'] === '1';
+    const name = headingMatch ? stripTags(headingMatch[1]) : (attrs['data-name'] || 'Unknown');
+    const imageUrl = imageMatch ? decodeHtml(imageMatch[1]) : '';
+    // The captured Olympus Phase-3 cards are deliberately not marked as
+    // bosses by the server. Both joined and unjoined variants identify the
+    // duel phase through a PvP image asset and a Duelist display name. Keep
+    // this fixture-backed presentation marker separate from battle-page
+    // phaseDuel, which remains the authority for entering the watcher.
+    const phase = /pvp/i.test(imageUrl) && /\bduelist\b/i.test(name) ? 3 : null;
     return {
       id: attrs['data-monster-id'] || null,
       dead,
       boss: attrs['data-boss'] === '1',
-      name: headingMatch ? stripTags(headingMatch[1]) : (attrs['data-name'] || 'Unknown'),
+      name,
+      imageUrl,
+      phase,
       joined: attrs['data-joined'] === '1',
       unjoined: attrs['data-unjoined'] === '1',
       userDmg: parseNumber(attrs['data-userdmg']) || 0,
@@ -764,6 +872,15 @@ function parseWaveMonsters(html) {
   });
 }
 
+function parseAutoSummonMonsterNames(html) {
+  const names = [];
+  for (const block of elementBlocks(String(html || ''), 'div', 'auto-summon-card')) {
+    const name = String(findClassValue(block.html, 'auto-summon-name') || '').trim();
+    if (name && !names.some(existing => existing.toLowerCase() === name.toLowerCase())) names.push(name);
+  }
+  return names;
+}
+
 function parseWaveLootSummary(html) {
   const source = String(html || '');
   const monsters = parseWaveMonsters(source);
@@ -777,8 +894,18 @@ function parseWaveLootSummary(html) {
       || elementBlocks(source, 'div', 'player-resources').length > 0
       || /<a\b[^>]*class=["'][^"']*\bwave-chip\b[^"']*\bactive\b/i.test(source)
     );
+  // Event waves use an event title instead of "Wave N". The authenticated
+  // Auto Farm panel is part of the same active-wave contract and remains
+  // present when the Event currently has no live/dead monster cards.
+  const hasPlayerResources = elementBlocks(source, 'div', 'player-resources').length > 0;
+  const hasActiveWaveNavigation = /<a\b[^>]*class=["'][^"']*\bwave-chip\b[^"']*\bactive\b/i.test(source);
+  const hasAutoFarmPanel = /<div\b[^>]*id=["']autoFarmPanel["'][^>]*>/i.test(source);
+  const hasAutoFarmGrid = /<div\b[^>]*id=["']afMultiGrid["'][^>]*>/i.test(source);
+  const hasAuthenticatedEventShell = !/\b(?:sign\s*in|log\s*in)\b/i.test(title)
+    && ((hasPlayerResources && (hasAutoFarmPanel || hasActiveWaveNavigation))
+      || (hasAutoFarmPanel && hasAutoFarmGrid));
   return {
-    recognized: Boolean(unclaimed || monsters.length > 0 || hasWaveShell),
+    recognized: Boolean(unclaimed || monsters.length > 0 || hasWaveShell || hasAuthenticatedEventShell),
     reportedUnclaimed,
     visibleLootable: lootableMonsters.reduce((total, monster) => total + monster.stackSize, 0),
     visibleLootActions: lootableMonsters.length,
@@ -1030,6 +1157,156 @@ function parseBattleConsumables(html) {
   return { recognized: true, items };
 }
 
+function parsePossibleLoot(html) {
+  const source = String(html || '');
+  const rewards = [];
+  for (const block of elementBlocks(source, 'div', 'loot-card')) {
+    const name = String(findClassValue(block.html, 'loot-name') || '').trim();
+    if (!name) continue;
+    const chips = elementBlocks(block.html, 'span', 'chip').map(chip => stripTags(chip.html));
+    const dropText = chips.find(value => /^Drop:/i.test(value)) || '';
+    const damageText = chips.find(value => /^DMG req:/i.test(value)) || '';
+    const phaseText = chips.find(value => /^Phase\s+\d+/i.test(value)) || '';
+    const parentPrefix = source.slice(Math.max(0, block.start - 500), block.start);
+    const heading = [...parentPrefix.matchAll(/class=["'][^"']*phase-loot-head[^"']*["'][^>]*>([\s\S]*?)<\/h4>/gi)].at(-1);
+    const phaseMatch = (phaseText || stripTags(heading?.[1] || '')).match(/Phase\s+(\d+)/i);
+    rewards.push({
+      itemId: parseNumber(block.attributes['data-item-id'] || block.attributes['data-item'] || block.attributes['data-id']),
+      name,
+      damageRequired: parseNumber(damageText.match(/DMG req:\s*([\d,]+)/i)?.[1]),
+      dropChance: parseNumber(dropText.match(/Drop:\s*([\d,.]+)/i)?.[1]),
+      phase: phaseMatch ? Number(phaseMatch[1]) : null,
+    });
+  }
+  return rewards;
+}
+
+function parseCubeHomePage(html) {
+  const objectSource = extractBalancedObject(String(html || ''), /(?:const|let|var)\s+STATE\s*=/);
+  if (!objectSource) return { recognized: false, instanceId: null, faces: [], nodes: [] };
+  let state;
+  try {
+    state = parseObjectLiteral(objectSource);
+  } catch {
+    return { recognized: false, instanceId: null, faces: [], nodes: [] };
+  }
+  const instanceMatch = String(html || '').match(/[?&]instance_id=(\d+)/i)
+    || String(html || '').match(/\bINSTANCE_ID\s*=\s*(\d+)/i);
+  const allowedStatuses = new Set(['hidden', 'available', 'in_progress', 'cleared']);
+  const faces = (Array.isArray(state.faces) ? state.faces : []).map(face => ({
+    id: Number(face.ID ?? face.id) || null,
+    key: String(face.FACE_KEY ?? face.face_key ?? ''),
+    name: String(face.DISPLAY_NAME ?? face.display_name ?? ''),
+    order: Number(face.DISPLAY_ORDER ?? face.display_order) || 0,
+  }));
+  const nodes = (Array.isArray(state.nodes) ? state.nodes : []).map(node => ({
+    id: Number(node.id) || null,
+    faceKey: String(node.face_key || ''),
+    key: String(node.key || ''),
+    name: String(node.name || ''),
+    type: String(node.type || '').toLowerCase(),
+    status: allowedStatuses.has(String(node.status || '').toLowerCase()) ? String(node.status).toLowerCase() : 'hidden',
+    linkedLocationId: Number(node.linked_location_id) || null,
+    pvpEncounterId: Number(node.pvp_encounter_id) || null,
+    monstersTotal: Number(node.monsters_total) || 0,
+    monstersLeft: Number(node.monsters_left) || 0,
+    stateMeta: node.state_meta && typeof node.state_meta === 'object' && !Array.isArray(node.state_meta) ? node.state_meta : {},
+  })).filter(node => node.id && node.name);
+  return {
+    recognized: Array.isArray(state.nodes),
+    instanceId: instanceMatch ? Number(instanceMatch[1]) : null,
+    selectedNodeId: Number(state.selected_node_id) || null,
+    currentFaceKey: String(state.current_face_key || ''),
+    faces,
+    nodes,
+  };
+}
+
+function parseCubePvpNodePage(html, context = {}) {
+  const source = String(html || '');
+  const commitmentMatch = stripTags(source).match(/currently committed to match\s*#(\d+)\s*for about\s*(\d+):(\d{2}):(\d{2})\s*more/i);
+  let committedMatchNo = commitmentMatch ? Number(commitmentMatch[1]) : null;
+  const cooldownRemainingMs = commitmentMatch
+    ? ((Number(commitmentMatch[2]) * 60 * 60) + (Number(commitmentMatch[3]) * 60) + Number(commitmentMatch[4])) * 1000
+    : null;
+  const matches = elementBlocks(source, 'div', 'match').map((block, index) => {
+    const meta = elementBlocks(block.html, 'div', 'meta')[0]?.html || '';
+    const metaText = stripTags(meta);
+    const countMatch = metaText.match(/Match\s*#(\d+)\s*\/\s*Slots\s*(\d+)\s*\/\s*(\d+)/i);
+    const linkMatch = block.html.match(/href=["']([^"']*pvp_style_battle\.php[^"']*)["']/i);
+    if (!countMatch || !linkMatch) return null;
+    // The site also styles the descriptive "Elite Team" badge with the
+    // `live` class.  Class names therefore cannot be the match-state
+    // contract: doing so leaves an already-cleared Elite room permanently
+    // "live".  Only the exact visible state badge is authoritative.
+    const badgeTexts = [...block.html.matchAll(/<[^>]+class=["'][^"']*\bbadge\b[^"']*["'][^>]*>([\s\S]*?)<\/[^>]+>/gi)]
+      .map(match => stripTags(match[1]).trim().toLowerCase());
+    const status = badgeTexts.includes('cleared') ? 'cleared'
+      : badgeTexts.includes('live') ? 'live'
+        : badgeTexts.includes('open') ? 'open' : 'unknown';
+    const slotBlocks = elementBlocks(block.html, 'div', 'slot');
+    const emptySlots = [];
+    let userSlot = null;
+    slotBlocks.forEach((slot, slotIndex) => {
+      if (/\bEmpty\b/i.test(stripTags(slot.html))) emptySlots.push(slotIndex + 1);
+      if (/\bselfMark\b/i.test(slot.html) || /\bYOUR SLOT\b/i.test(stripTags(slot.html))) userSlot = slotIndex + 1;
+    });
+    const rewards = elementBlocks(block.html, 'div', 'rewardItem').map(item => ({
+      name: String(findClassValue(item.html, 'rewardName') || '').trim(),
+      quantity: parseNumber(findClassValue(item.html, 'rewardQty')) || 0,
+    })).filter(item => item.name);
+    const decodedUrl = decodeHtml(linkMatch[1]);
+    return {
+      index,
+      matchNo: Number(countMatch[1]),
+      title: String(findClassValue(block.html, 'matchTitle') || `Match #${countMatch[1]}`).trim(),
+      status,
+      occupiedSlots: Number(countMatch[2]),
+      maximumSlots: Number(countMatch[3]),
+      emptySlots,
+      userSlot,
+      joined: committedMatchNo === Number(countMatch[1]),
+      rewards,
+      url: decodedUrl.startsWith('http') ? decodedUrl : `https://demonicscans.org/${decodedUrl.replace(/^\//, '')}`,
+    };
+  }).filter(Boolean);
+  if (!committedMatchNo) committedMatchNo = matches.find(match => match.userSlot && match.status !== 'cleared')?.matchNo || null;
+  for (const match of matches) match.joined = match.matchNo === committedMatchNo;
+  const openCandidates = matches.filter(match => match.status === 'open' && match.emptySlots.length > 0)
+    .sort((left, right) => right.occupiedSlots - left.occupiedSlots || left.index - right.index || left.matchNo - right.matchNo);
+  return {
+    recognized: matches.length > 0,
+    instanceId: Number(context.instanceId) || null,
+    nodeId: Number(context.nodeId) || null,
+    matches,
+    candidate: openCandidates[0] || null,
+    commitment: committedMatchNo ? {
+      matchNo: committedMatchNo,
+      slotIndex: matches.find(match => match.matchNo === committedMatchNo)?.userSlot || null,
+      cooldownRemainingMs,
+    } : null,
+  };
+}
+
+function parseCubePvpState(payload) {
+  let source = payload;
+  if (typeof payload === 'string') {
+    try { source = JSON.parse(payload); } catch { return { recognized: false }; }
+  }
+  if (!source || typeof source !== 'object' || source.ok !== true) return { recognized: false };
+  return {
+    recognized: true,
+    ended: source.match?.ended === true,
+    winnerSide: source.match?.winner_side == null ? null : String(source.match.winner_side),
+    roomJoined: source.room_joined === true,
+    roomSlot: Number(source.room_slot) || null,
+    roomStatus: String(source.room_status || '').toLowerCase(),
+    matchNo: Number(source.match_no) || null,
+    lastLogId: Number(source.last_log_id) || 0,
+    inMatch: source.me?.in_match === true,
+  };
+}
+
 function parseBattlePage(html) {
   const objectSource = extractBalancedObject(html, /window\.BATTLE_CFG\s*=/);
   let battleCfg = null;
@@ -1102,6 +1379,21 @@ function parseBattlePage(html) {
   const monsterStats = parseMonsterStatsModal(html);
   const consumables = parseBattleConsumables(html);
   const topbar = parseTopbar(html);
+  let phaseDuel = null;
+  const phaseDuelHref = String(html || '').match(/href=["']([^"']*pvp_style_battle\.php\?[^"']*\bsource=(?:monster_phase|monster%5[Ff]phase)[^"']*)["']/i)?.[1];
+  if (phaseDuelHref) {
+    try {
+      const url = new URL(decodeHtml(phaseDuelHref), 'https://demonicscans.org/');
+      const activeId = url.searchParams.get('active_id');
+      if (url.origin === 'https://demonicscans.org' && url.pathname === '/pvp_style_battle.php'
+        && url.searchParams.get('source') === 'monster_phase' && /^\d{1,30}$/.test(String(activeId || ''))) {
+        phaseDuel = {
+          activeId: Number(activeId),
+          url: `https://demonicscans.org/pvp_style_battle.php?source=monster_phase&active_id=${encodeURIComponent(activeId)}`,
+        };
+      }
+    } catch {}
+  }
   if (monsterStats) {
     if (expPerDamage !== null) monsterStats.expPerDamage = expPerDamage;
     if (expCapPercent !== null) monsterStats.expCapPercent = expCapPercent;
@@ -1124,6 +1416,7 @@ function parseBattlePage(html) {
     stamina: topbar.stamina ?? null,
     maxStamina: topbar.maxStamina ?? null,
     consumables,
+    phaseDuel,
     isDead: monsterHp?.current === 0 || hasLootButton,
     isJoined: !hasJoinButton && (skills.length > 0 || hasLootButton),
     hasLootButton,
@@ -1138,6 +1431,113 @@ function parseBattlePage(html) {
       rewardsUpToLevel: monsterStats?.rewardsUpToLevel ?? null,
     },
     monsterStats,
+    possibleLoot: parsePossibleLoot(html),
+  };
+}
+
+function parseAdventurerQuests(html) {
+  const source = String(html || '');
+  const recognized = /Adventurer(?:'|&#39;|’)?s Guild/i.test(source)
+    && /class=["'][^"']*quest-list\b/i.test(source);
+  if (!recognized) return { recognized: false, quests: [], activeQuestId: null, refreshAt: null };
+  const quests = elementBlocks(source, 'div', 'quest-row').map(block => {
+    const actionId = action => {
+      const match = block.html.match(new RegExp(`${action}\\s*\\(\\s*['\"]?(\\d+)['\"]?`, 'i'));
+      return match ? Number(match[1]) : null;
+    };
+    const acceptQuestId = actionId('acceptQuest');
+    const finishQuestId = actionId('finishQuest');
+    const giveUpQuestId = actionId('giveUpQuest');
+    const title = findClassValue(block.html, 'quest-main-title') || 'Untitled quest';
+    const description = findClassValue(block.html, 'quest-main-desc') || '';
+    const objective = findClassValue(block.html, 'quest-req-text') || '';
+    const reward = findClassValue(block.html, 'quest-reward') || '';
+    const cooldown = block.html.match(/data-cooldown-ts=["'](\d+)["']/i);
+    const cooldownText = findClassValue(block.html, 'quest-cooldown-timer') || '';
+    const progressText = stripTags(block.html.match(/<div\b[^>]*class=["'][^"']*\bquest-progress\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i)?.[1] || '');
+    const progressMatch = progressText.match(/(?:progress\s*:?)?\s*(\d[\d,]*)\s*\/\s*(\d[\d,]*)/i);
+    const current = progressMatch ? Number(progressMatch[1].replace(/,/g, '')) : null;
+    const required = progressMatch ? Number(progressMatch[2].replace(/,/g, '')) : null;
+    const finishButton = block.html.match(/<button\b([^>]*)class=["'][^"']*\bquest-finish-btn\b[^"']*["']([^>]*)>/i);
+    const finishAttributes = finishButton ? `${finishButton[1]} ${finishButton[2]}` : '';
+    const hasFinishAction = finishQuestId !== null || Boolean(finishButton);
+    const finishDisabled = /\bdisabled(?:\s*=|\s|$)/i.test(finishAttributes)
+      || /\baria-disabled\s*=\s*["']?true\b/i.test(finishAttributes);
+    const progressComplete = current !== null && required !== null && current >= required;
+    let status = 'unknown';
+    // The live board may render its Finish control before the objective has
+    // reached its requirement. A visible control is therefore authoritative
+    // only when it is enabled and the board either proves completion or omits
+    // a progress counter entirely. This prevents premature turn-in POSTs.
+    if (hasFinishAction && !finishDisabled && (progressMatch === null || progressComplete)) status = 'claimable';
+    else if (hasFinishAction || giveUpQuestId !== null || /quest-progress/i.test(block.html)) status = 'active';
+    else if (acceptQuestId !== null || /quest-accept-btn/i.test(block.html)) status = 'available';
+    else if (cooldown) status = 'cooldown';
+    const id = status === 'available' ? acceptQuestId
+      : status === 'claimable' ? (finishQuestId ?? giveUpQuestId)
+        : status === 'active' ? (giveUpQuestId ?? finishQuestId)
+          : (acceptQuestId ?? finishQuestId ?? giveUpQuestId);
+    return {
+      id,
+      acceptQuestId,
+      finishQuestId,
+      giveUpQuestId,
+      title,
+      description,
+      objective,
+      reward,
+      status,
+      current,
+      required,
+      cooldownUntil: cooldown ? Number(cooldown[1]) : null,
+      cooldownText,
+    };
+  });
+  const refreshAt = source.match(/id=["']questRefreshCountdown["'][^>]*data-unlock-ts=["'](\d+)["']/i);
+  return {
+    recognized: true,
+    quests,
+    activeQuestId: quests.find(quest => ['active', 'claimable'].includes(quest.status))?.id || null,
+    refreshAt: refreshAt ? Number(refreshAt[1]) : null,
+  };
+}
+
+function parseBattlePass(html) {
+  const source = String(html || '');
+  const recognized = /Battle Pass/i.test(source) && /Daily Quests/i.test(source);
+  if (!recognized) return { recognized: false, active: false, seasonId: null, title: '', endsText: '', objectives: [] };
+  const heading = source.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  const season = source.match(/name=["']season_id["'][^>]*value=["'](\d+)["']/i);
+  const ends = stripTags(source).match(/Ends in\s+([^•]+)/i);
+  const objectives = elementBlocks(source, 'div', 'quest').map((block, index) => {
+    const text = stripTags(block.html);
+    const nameMatch = block.html.match(/<strong[^>]*>([\s\S]*?)<\/strong>/i);
+    const progressMatches = [...text.matchAll(/(\d[\d,]*)\s*\/\s*(\d[\d,]*)/g)];
+    const progress = progressMatches.at(-1);
+    const type = /SPEND\s+STAMINA/i.test(text) ? 'spend_stamina'
+      : /MUST\s+BE\s+LOOTED|MONSTERS?\s+HUNT/i.test(text) ? 'monster_hunt'
+        : `unknown_${index + 1}`;
+    const damage = text.match(/Damage\s+Min\s*:\s*([\d,]+)/i);
+    const target = text.match(/Target:\s*(?:Stamina|Count)\s*:\s*([\d,]+)/i);
+    const current = progress ? Number(progress[1].replace(/,/g, '')) : 0;
+    const required = progress ? Number(progress[2].replace(/,/g, ''))
+      : target ? Number(target[1].replace(/,/g, '')) : 0;
+    return {
+      type,
+      name: nameMatch ? stripTags(nameMatch[1]) : text.slice(0, 120),
+      current,
+      required,
+      completed: /Completed/i.test(text) || (required > 0 && current >= required),
+      minimumDamage: damage ? Number(damage[1].replace(/,/g, '')) : 0,
+    };
+  });
+  return {
+    recognized: true,
+    active: objectives.length > 0,
+    seasonId: season ? Number(season[1]) : null,
+    title: heading ? stripTags(heading[1]) : 'Battle Pass',
+    endsText: ends ? ends[1].trim() : '',
+    objectives,
   };
 }
 
@@ -1149,13 +1549,19 @@ module.exports = {
   parseActiveBuffs,
   parseTopbar,
   parseStatsPage,
+  parseAutoFarmPanel,
   parseGates,
   parseWaveMonsters,
+  parseAutoSummonMonsterNames,
   parseWaveLootSummary,
   parseWaveDeadPageNumbers,
   parseWavePlayerResources,
   parseMonsterStatsModal,
   parseBattleConsumables,
+  parsePossibleLoot,
+  parseCubeHomePage,
+  parseCubePvpNodePage,
+  parseCubePvpState,
   parseGearInventoryPage,
   parsePetInventoryPage,
   parseClassSkillTreePage,
@@ -1165,4 +1571,6 @@ module.exports = {
   parseDungeonLocationPage,
   parseObjectLiteral,
   parseBattlePage,
+  parseAdventurerQuests,
+  parseBattlePass,
 };

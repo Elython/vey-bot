@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const { Logger } = require('./logger');
-const { getDataDir } = require('./paths');
+const { getDataDir } = require('./dataPaths');
 
 class MangaManager {
   constructor(dataDir) {
@@ -286,6 +286,38 @@ class MangaManager {
     return allAccountData[accountName]?.farmSettings || {};
   }
 
+  exportAccount(accountName) {
+    if (!accountName) return {};
+    return JSON.parse(JSON.stringify(this.getAccountData()[accountName] || {}));
+  }
+
+  replaceAccount(accountName, payload) {
+    if (!accountName || !payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('Invalid Manga backup');
+    const allAccountData = this.getAccountData();
+    allAccountData[accountName] = JSON.parse(JSON.stringify(payload));
+    this.saveAccountData(allAccountData);
+    return true;
+  }
+
+  purgeAccount(accountName) {
+    if (!accountName) return false;
+    const allAccountData = this.getAccountData();
+    const removed = Object.prototype.hasOwnProperty.call(allAccountData, accountName);
+    if (removed) {
+      delete allAccountData[accountName];
+      this.saveAccountData(allAccountData);
+    }
+    if (fs.existsSync(this.logPath)) {
+      const marker = `Account [${accountName}]`;
+      const retained = fs.readFileSync(this.logPath, 'utf8')
+        .split(/(?<=\n)/)
+        .filter(line => !line.includes(marker))
+        .join('');
+      fs.writeFileSync(this.logPath, retained, { encoding: 'utf8', mode: 0o600 });
+    }
+    return removed;
+  }
+
   /**
    * Re-fetches title and chapter count for a single manga
    */
@@ -393,6 +425,17 @@ class MangaManager {
     this.saveList(list);
     this.logEntry(`Refreshed chapter counts for ${updatedCount} manga(s)`);
     return { success: true, count: updatedCount, list: this.getAccountMangaList(accountName) };
+  }
+  /**
+   * Reinitialize the data directory after app.getPath becomes available.
+   * @param {string} [dataDir]
+   */
+  init(dataDir) {
+    this.dataDir = dataDir || getDataDir();
+    this.jsonPath = path.join(this.dataDir, 'manga_list.json');
+    this.accountDataPath = path.join(this.dataDir, 'account_manga.json');
+    this.logPath = path.join(this.dataDir, 'manga.log');
+    this.ensureFiles();
   }
 }
 

@@ -64,20 +64,6 @@ class AttackPlanner {
       });
     }
 
-
-    const staminaSpendRemaining = Math.max(0, Math.trunc(Number(state.staminaSpendRemaining) || 0));
-    if (staminaSpendRemaining > 0) {
-      const overflowAttack = affordable.filter(attack => attack.stamCost <= staminaSpendRemaining).at(-1);
-      if (overflowAttack) {
-        return copyAttack(overflowAttack, {
-          mode,
-          source: 'stamina-overflow',
-          estimatedDamage: null,
-          staminaSpendRemaining,
-        });
-      }
-    }
-
     const baseDamage = positiveNumber(state.damageEstimate?.conservativeBaseDamage);
     const remainingDamage = Number(state.remainingTargetDamage);
     const selectedFixed = affordable.at(-1) || affordable[0];
@@ -214,17 +200,23 @@ class AttackPlanner {
   }
 
   _abilityCandidates(state, { budget, baseDamage, commonPlanning }) {
-    if (this.config.combat?.allowAbilities !== true || this.config.resources?.mana?.allowAbilities !== true) return [];
-    const allowedIds = new Set((this.config.combat?.allowedAbilityIds || []).map(Number));
+    const objectiveAbilityId = Math.max(0, Math.trunc(Number(state.objectiveAbilityId) || 0));
+    if (this.config.combat?.allowAbilities !== true && objectiveAbilityId < 1) return [];
+    const allowedIds = objectiveAbilityId > 0
+      ? new Set([objectiveAbilityId])
+      : new Set((this.config.combat?.allowedAbilityIds || []).map(Number));
     if (allowedIds.size === 0) return [];
     const currentMana = Math.max(0, Number(state.mana) || 0);
-    const maximumMana = Math.max(0, Number(state.maxMana) || 0);
     const manaPolicy = this.config.resources?.mana || {};
-    const manaReservePercent = Math.max(0, Number(manaPolicy.stopBelow) || 0);
-    const manaReserve = maximumMana > 0 ? Math.ceil(maximumMana * Math.min(100, manaReservePercent) / 100) : 0;
+    const manaReserve = Math.max(0, Number(manaPolicy.keepMin) || 0);
 
     return (Array.isArray(state.abilities) ? state.abilities : [])
-      .filter(skill => skill?.owned === true && skill.passive !== true && allowedIds.has(Number(skill.id)))
+      .filter(skill => {
+        const role = objectiveAbilityId === Number(skill?.id)
+          ? 'attack'
+          : this.config.combat?.abilityPolicies?.[String(skill?.id)]?.role || (skill?.passive ? 'passive' : 'attack');
+        return skill?.owned === true && skill.passive !== true && role === 'attack' && allowedIds.has(Number(skill.id));
+      })
       .map(skill => {
         const stamCost = Math.max(0, Math.trunc(Number(skill.staminaCost) || 0));
         const manaCost = Math.max(0, Math.trunc(Number(skill.manaCost) || 0));

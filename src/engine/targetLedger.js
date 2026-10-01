@@ -1,5 +1,5 @@
 const { selectGateMonster } = require('./monsterCatalog');
-const { deepMerge, validateConfig } = require('./configManager');
+const { deepMerge } = require('./configManager');
 
 class TargetLedger {
   constructor(config, configManager = null) {
@@ -18,6 +18,31 @@ class TargetLedger {
 
   selectTarget(areaKey, monsters, nowEpoch, options = {}) {
     const configured = this.config.monsters?.maps?.[areaKey] || {};
+    const preferredTargets = Array.isArray(options.preferredTargets)
+      ? options.preferredTargets.filter(entry => entry?.monsterKey && entry.enabled !== false)
+      : [];
+    if (preferredTargets.length > 0) {
+      const objectiveConfig = {};
+      for (const entry of preferredTargets) {
+        objectiveConfig[entry.monsterKey] = {
+          name: entry.name || entry.monsterKey,
+          enabled: true,
+          unlimited: true,
+          killCount: 1,
+          completedCount: 0,
+          targetDamage: Math.max(1, Number(entry.targetDamage) || 1),
+          minimumHp: Math.max(0, Number(entry.minimumHp) || 0),
+          priority: Math.max(0, Number(entry.priority) || 0),
+        };
+      }
+      const lowestPriority = Math.min(...preferredTargets.map(entry => Math.max(0, Number(entry.priority) || 0)));
+      const cursorKey = `${areaKey}:objective:${lowestPriority}`;
+      const selected = selectGateMonster(monsters, objectiveConfig, nowEpoch, {
+        afterMonsterKey: this.roundRobinCursor.get(cursorKey) || '',
+      });
+      if (selected) this.roundRobinCursor.set(cursorKey, selected.monsterKey);
+      return selected;
+    }
     const preferredMonsterKey = String(options.preferredMonsterKey || '');
     if (preferredMonsterKey) {
       const base = configured[preferredMonsterKey] || {};
@@ -53,14 +78,12 @@ class TargetLedger {
   isAllowed(target, battle, general) {
     const settings = this.getSettings(target);
     const currentHp = battle?.monsterHp ?? target?.hp;
-    const selectedAreas = general?.module === 'gates_dungeons'
-      ? new Set([general.dungeonMap, general.gateMap].filter(Boolean))
-      : general?.module === 'event'
+    const selectedAreas = general?.module === 'event'
         ? new Set([general.eventMap || general.map].filter(Boolean))
         : new Set([general?.map].filter(Boolean));
     return Boolean(
       target &&
-      ['gates', 'dungeons', 'gates_dungeons', 'event'].includes(general?.module) &&
+      ['gates', 'dungeons', 'event'].includes(general?.module) &&
       selectedAreas.has(target.areaKey) &&
       settings?.enabled &&
       settings.targetDamage > 0 &&
@@ -86,9 +109,8 @@ class TargetLedger {
     const patch = {
       monsters: { maps: { [target.areaKey]: { [target.monsterKey]: { completedCount, completedInstanceIds } } } },
     };
-    this.config = this.configManager
-      ? this.configManager.update(patch)
-      : validateConfig(deepMerge(this.config, patch));
+    if (this.configManager) this.configManager.update(patch);
+    this.config = deepMerge(this.config, patch);
     return { config: this.config, completedCount, duplicate: false };
   }
 }

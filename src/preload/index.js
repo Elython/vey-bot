@@ -9,12 +9,14 @@ contextBridge.exposeInMainWorld('botAPI', {
   // Account & Session Management
   listAccounts: () => ipcRenderer.invoke('account:list'),
   deleteAccount: (accountName) => ipcRenderer.invoke('account:delete', accountName),
+  purgeActiveAccount: () => ipcRenderer.invoke('account:purge-active'),
   openAddAccountWindow: () => ipcRenderer.invoke('account:add-window'),
   loginWithAccount: (accountName) => ipcRenderer.invoke('account:login', accountName),
   logout: () => ipcRenderer.invoke('bot:logout'),
 
   // Browser View & Application
   openBrowserView: () => ipcRenderer.invoke('game:open-browser'),
+  openBattleInBrowser: (pageUrl) => ipcRenderer.invoke('game:open-battle', pageUrl),
   quitApp: () => ipcRenderer.invoke('app:quit'),
 
   // Bot Lifecycle Controls
@@ -25,28 +27,60 @@ contextBridge.exposeInMainWorld('botAPI', {
 
   // Configuration
   updateConfig: (config) => ipcRenderer.invoke('bot:update-config', config),
+  applyConfig: () => ipcRenderer.invoke('bot:apply-config'),
   getConfig: () => ipcRenderer.invoke('bot:get-config'),
   exportConfig: () => ipcRenderer.invoke('bot:export-config'),
   importConfig: () => ipcRenderer.invoke('bot:import-config'),
-  getMonsterCatalog: () => ipcRenderer.invoke('monsters:get-catalog'),
-  listMonstersForArea: (areaKey) => ipcRenderer.invoke('monsters:list-area', areaKey),
+  exportAccountData: () => ipcRenderer.invoke('account:export-data'),
+  restoreAccountData: () => ipcRenderer.invoke('account:restore-data'),
+  getMonsterCatalog: (includeHidden = false) => ipcRenderer.invoke('monsters:get-catalog', includeHidden),
+  getAutoFarmState: (force = false) => ipcRenderer.invoke('auto-farm:get-state', { force: force === true }),
+  saveAutoFarmToServer: () => ipcRenderer.invoke('auto-farm:save'),
+  addAutoFarmTargets: (areaKey) => ipcRenderer.invoke('auto-farm:add-targets', areaKey),
+  removeAutoFarmTarget: (targetId) => ipcRenderer.invoke('auto-farm:remove-target', targetId),
+  listMonstersForArea: (areaKey, force = false) => ipcRenderer.invoke('monsters:list-area', areaKey, force === true),
   listLootableMonstersForArea: (areaKey) => ipcRenderer.invoke('monsters:list-lootable-area', areaKey),
   getMonsterStats: (areaKey, monsterKey, refresh = false) => ipcRenderer.invoke('monsters:get-stats', areaKey, monsterKey, refresh),
+  applyObservedMonsterStats: (areaKey, monsterKey) => ipcRenderer.invoke('monsters:apply-observed-stats', areaKey, monsterKey),
   collectMonsterStatsForArea: (areaKey) => ipcRenderer.invoke('monsters:collect-area-stats', areaKey),
+  getActivityHistory: (kind, limit = 100) => ipcRenderer.invoke('history:list', kind, limit),
+  clearActivityHistory: (kinds, before = null) => ipcRenderer.invoke('history:clear', { kinds, before }),
+  getStatistics: (period = '7d') => ipcRenderer.invoke('statistics:get', { period }),
   getActiveLoadout: (options = {}) => ipcRenderer.invoke('loadouts:get-active', options),
   getSavedLoadoutSet: (options = {}) => ipcRenderer.invoke('loadouts:get-saved-set', options),
   getAttackStrategyStatus: (force = false) => ipcRenderer.invoke('combat:get-strategy-status', force),
   getClassSkills: () => ipcRenderer.invoke('combat:get-class-skills'),
+  getCubePvpStatus: () => ipcRenderer.invoke('cube-pvp:get-status'),
+  getCubePvpOverview: (force = false) => ipcRenderer.invoke('cube-pvp:get-overview', { force: force === true }),
+  openCubePvpMatch: () => ipcRenderer.invoke('cube-pvp:open-match'),
+  getCubePvpHistory: () => ipcRenderer.invoke('cube-pvp:get-history'),
+  getAdventurerQuests: () => ipcRenderer.invoke('objectives:get-adventure-quests'),
+  getBattlePass: () => ipcRenderer.invoke('objectives:get-battle-pass'),
 
   // Telemetry & Status
   getTelemetry: () => ipcRenderer.invoke('bot:get-telemetry'),
   refreshProgressionLoot: () => ipcRenderer.invoke('progression:refresh-loot'),
+  updateProgressionSettings: (progression) => ipcRenderer.invoke('progression:update-settings', progression),
+  createProgressionProfile: name => ipcRenderer.invoke('progression:create-profile', { name }),
+  renameProgressionProfile: (profileId, name) => ipcRenderer.invoke('progression:rename-profile', { profileId, name }),
+  deleteProgressionProfile: (profileId) => ipcRenderer.invoke('progression:delete-profile', profileId),
+  selectProgressionProfile: (profileId) => ipcRenderer.invoke('progression:select-profile', profileId),
+  updateCombatStrategy: (combat) => ipcRenderer.invoke('combat:update-strategy', combat),
+  listAvailableProgressionLoot: () => ipcRenderer.invoke('progression:list-available-loot'),
+  listLootDiscovery: (areaKey = null) => ipcRenderer.invoke('loot-discovery:list', areaKey),
+  refreshLootDiscovery: (areaKey) => ipcRenderer.invoke('loot-discovery:refresh', areaKey),
+  claimDiscoveredLoot: (areaKey, candidateKey) => ipcRenderer.invoke('loot-discovery:claim', areaKey, candidateKey),
 
   // Event Subscriptions
   onStateChange: (callback) => {
     const handler = (event, data) => callback(data);
     ipcRenderer.on('bot:state-change', handler);
     return () => ipcRenderer.removeListener('bot:state-change', handler);
+  },
+  onCubePvpStatus: (callback) => {
+    const handler = (event, data) => callback(data);
+    ipcRenderer.on('cube-pvp:status', handler);
+    return () => ipcRenderer.removeListener('cube-pvp:status', handler);
   },
 
   onTelemetry: (callback) => {
@@ -65,6 +99,12 @@ contextBridge.exposeInMainWorld('botAPI', {
     const handler = (event, data) => callback(data);
     ipcRenderer.on('bot:captcha-alert', handler);
     return () => ipcRenderer.removeListener('bot:captcha-alert', handler);
+  },
+
+  onLootDiscovery: (callback) => {
+    const handler = (event, data) => callback(data);
+    ipcRenderer.on('loot-discovery:update', handler);
+    return () => ipcRenderer.removeListener('loot-discovery:update', handler);
   },
 
   onServerTime: (callback) => {

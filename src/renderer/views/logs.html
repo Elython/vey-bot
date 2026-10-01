@@ -1,0 +1,27 @@
+      <!-- SCREEN 6: Logs Tab (Developer Mode) -->
+      <section id="viewConsole" class="view-panel" style="display: none;">
+        <div class="subtabs-bar">
+          <button class="subtab-btn active" id="subtabConsoleUserBtn" data-console-tab="user">User Logs</button>
+          <button class="subtab-btn" id="subtabConsoleServerBtn" data-console-tab="server">Client
+            Logs</button>
+        </div>
+
+        <!-- Sub-panel: User Logs -->
+        <div id="subviewConsoleUser" class="subview-panel">
+          <div class="log-toolbar">
+            <span class="log-label">User Actions Log File (data/logs/*_user.log)</span>
+            <button id="btnRefreshUserLogs" class="btn btn-sm">Refresh</button>
+          </div>
+          <pre id="userLogsText" class="log-console-file">Loading user logs...</pre>
+        </div>
+
+        <!-- Sub-panel: Client / API Logs -->
+        <div id="subviewConsoleServer" class="subview-panel" style="display: none;">
+          <div class="log-toolbar">
+            <span class="log-label">Client API & Auto Operations Log File (data/logs/*_client.log)</span>
+            <button id="btnRefreshServerLogs" class="btn btn-sm">Refresh</button>
+          </div>
+          <pre id="serverLogsText" class="log-console-file">Loading client logs...</pre>
+        </div>
+      </section>
+

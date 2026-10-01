@@ -11,12 +11,14 @@
       this.status = document.getElementById('monsterStatsStatus');
       this.content = document.getElementById('monsterStatsContent');
       this.refreshButton = document.getElementById('btnRefreshMonsterStats');
+      this.applyButton = document.getElementById('btnApplyMonsterStats');
       this.current = null;
       document.getElementById('btnCloseMonsterStats')?.addEventListener('click', () => this.close());
       this.modal?.addEventListener('click', event => {
         if (event.target === this.modal) this.close();
       });
       this.refreshButton?.addEventListener('click', () => this.load(true));
+      this.applyButton?.addEventListener('click', () => this.applyObserved());
     }
 
     open(areaKey, monsterKey, name) {
@@ -35,6 +37,7 @@
       this.content.replaceChildren(this._message('Loading monster stats…'));
       if (this.status) this.status.textContent = refresh ? 'Refreshing from battle page…' : '';
       this.status?.classList.remove('has-conflict');
+      if (this.applyButton) this.applyButton.style.display = 'none';
       if (this.refreshButton) this.refreshButton.disabled = true;
       try {
         const result = await this.api.getMonsterStats(
@@ -49,6 +52,23 @@
         if (this.status) this.status.textContent = 'No verified stats available';
       } finally {
         if (this.refreshButton) this.refreshButton.disabled = false;
+      }
+    }
+
+    async applyObserved() {
+      if (!this.current || !this.applyButton) return;
+      this.applyButton.disabled = true;
+      try {
+        const result = await this.api.applyObservedMonsterStats(this.current.areaKey, this.current.monsterKey);
+        if (!result?.success) throw new Error(result?.error || 'Changed Monster Stats could not be applied');
+        this.render(result.record, { conflict: false, applied: true });
+      } catch (error) {
+        if (this.status) {
+          this.status.textContent = error.message;
+          this.status.classList.add('has-conflict');
+        }
+      } finally {
+        this.applyButton.disabled = false;
       }
     }
 
@@ -81,14 +101,46 @@
         grid.appendChild(cell);
       }
       this.content.replaceChildren(grid);
+      const rewards = Array.isArray(stats.possibleLoot) ? stats.possibleLoot : [];
+      if (rewards.length > 0) {
+        const groups = new Map();
+        for (const reward of rewards) {
+          const heading = reward.phase ? `Phase ${reward.phase} Loot` : 'Possible Loot';
+          if (!groups.has(heading)) groups.set(heading, []);
+          groups.get(heading).push(reward);
+        }
+        for (const [heading, items] of groups) {
+          const section = document.createElement('section');
+          section.className = 'monster-reward-section';
+          const title = document.createElement('h4');
+          title.textContent = heading;
+          const list = document.createElement('div');
+          list.className = 'monster-reward-list';
+          for (const reward of items) {
+            const row = document.createElement('div');
+            row.className = 'monster-reward-row';
+            const name = document.createElement('strong');
+            name.textContent = reward.name;
+            const detail = document.createElement('span');
+            detail.textContent = `${formatNumber(reward.damageRequired)} damage · ${formatNumber(reward.dropChance)}%`;
+            row.append(name, detail);
+            list.appendChild(row);
+          }
+          section.append(title, list);
+          this.content.appendChild(section);
+        }
+      }
       const observed = record?.provenance?.observedAt;
       const source = result.cached ? 'Saved verified catalog' : 'Live battle page';
       if (this.status) {
-        this.status.textContent = result.conflict
+        this.status.textContent = result.applied
+          ? 'Changed live values were applied to the saved catalog'
+          : result.conflict
           ? `${source} · conflicting live values detected; verified values were preserved`
           : `${source}${observed ? ` · observed ${observed}` : ''}`;
         this.status.classList.toggle('has-conflict', Boolean(result.conflict));
       }
+      if (this.applyButton) this.applyButton.style.display = result.conflict ? 'inline-flex' : 'none';
     }
 
     _message(text, className = '') {

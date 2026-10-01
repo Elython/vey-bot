@@ -5,7 +5,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { getDataDir } = require('./paths');
+const { getDataDir } = require('./dataPaths');
 
 class SessionManager {
   /**

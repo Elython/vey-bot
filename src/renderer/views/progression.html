@@ -1,0 +1,301 @@
+      <!-- SCREEN 3: Progression Tab (Logged In) -->
+      <section id="viewEnergyFarm" class="view-panel" style="display: none;">
+        <div class="subtabs-bar">
+          <button class="subtab-btn active" id="subtabStaminaGeneralBtn" data-energy-tab="strategy">Strategy</button>
+          <button class="subtab-btn" id="subtabChaptersBtn" data-energy-tab="chapters">Chapters</button>
+          <button class="subtab-btn" id="subtabProgressionLootBtn" data-energy-tab="history">History</button>
+        </div>
+
+        <div id="subviewStaminaGeneral" class="subview-panel home-config-panel">
+          <div class="progression-profile-manager" aria-label="Progression profile manager">
+            <label for="selectProgressionProfile">Progression config</label>
+            <select id="selectProgressionProfile" class="tree-select">
+              <option value="default">Default</option>
+            </select>
+            <input id="inputProgressionProfileName" class="tree-input-flex" type="text" maxlength="60"
+              placeholder="Profile name" aria-label="Progression profile name">
+            <button id="btnCreateProgressionProfile" class="btn btn-primary btn-sm workspace-icon-btn" type="button"
+              title="Create a new profile" aria-label="Create a new Progression profile"><i data-lucide="plus"></i></button>
+            <button id="btnRenameProgressionProfile" class="btn btn-secondary btn-sm workspace-icon-btn" type="button"
+              title="Rename the selected profile" aria-label="Rename the selected Progression profile"><i data-lucide="pencil"></i></button>
+            <button id="btnDeleteProgressionProfile" class="btn btn-danger btn-sm workspace-icon-btn" type="button"
+              title="Delete the selected profile" aria-label="Delete the selected Progression profile"><i data-lucide="trash-2"></i></button>
+          </div>
+          <div id="progressionStaminaFlow" class="progression-flow-shell" aria-label="Stamina decision flow">
+            <div class="progression-flow-step" data-flow-step="looting">Looting</div><i data-lucide="arrow-right"></i>
+            <div class="progression-flow-step" data-flow-step="chapters">Chapter farming</div><i
+              data-lucide="arrow-right"></i>
+            <div class="progression-flow-step" data-flow-step="potions">Potions</div><i data-lucide="arrow-right"></i>
+            <div class="progression-flow-step" data-flow-step="waiting">Waiting</div>
+          </div>
+          <div class="progression-summary-shell" aria-live="polite">
+            <button id="btnRefreshProgressionLoot"
+              class="btn btn-primary btn-sm workspace-icon-btn progression-summary-refresh" type="button"
+              title="Scan eligible loot" aria-label="Scan eligible loot"><i data-lucide="rotate-cw"></i></button>
+            <div class="progression-summary-grid">
+              <div class="combat-summary-card"><span>State</span>
+                <div><strong id="progressionCurrentState">Monitoring</strong></div>
+              </div>
+              <div class="combat-summary-card"><span>Eligible loot XP</span>
+                <div><strong id="progressionLootXp">-</strong></div>
+              </div>
+              <div class="combat-summary-card"><span>Loot scan</span>
+                <div><strong id="progressionLootScan">Not scanned</strong></div>
+              </div>
+              <div class="combat-summary-card"><span>XP needed</span>
+                <div><strong id="progressionXpNeeded">-</strong></div>
+              </div>
+            </div>
+            <details id="progressionScanErrors" class="scan-error-details" style="display: none;">
+              <summary id="progressionScanErrorsSummary">Scan details</summary>
+              <div id="progressionScanErrorsContent" class="scan-error-list"></div>
+            </details>
+          </div>
+          <div class="tree-form-container">
+            <div class="form-tree-row" id="rowProgressionLootLeveling">
+              <label class="form-tree-label" for="chkProgressionLootLeveling">Use loot for leveling</label>
+              <div class="form-tree-control"><input id="chkProgressionLootLeveling" type="checkbox"
+                  class="tree-checkbox"></div>
+            </div>
+            <div id="progressionLootLevelingOptions" class="progression-policy-group">
+            <div class="form-tree-row resource-child-row" id="rowProgressionDrainBeforeLoot">
+              <label class="form-tree-label" for="chkProgressionDrainBeforeLoot">Drain Stamina before loot</label>
+              <div class="form-tree-control"><input id="chkProgressionDrainBeforeLoot" type="checkbox"
+                  class="tree-checkbox" checked disabled></div>
+            </div>
+            <div class="form-tree-row resource-child-row" id="rowProgressionDungeonSources">
+              <label class="form-tree-label" for="chkProgressionLootDungeons">Loot from Dungeons</label>
+              <div class="form-tree-control"><input id="chkProgressionLootDungeons" type="checkbox"
+                  class="tree-checkbox"></div>
+            </div>
+            <details class="progression-source-picker resource-child-row" id="progressionDungeonSourcePicker" open>
+              <summary>Dungeons <span id="progressionDungeonSourceCount">0 selected</span></summary>
+              <div id="progressionDungeonSourceList" class="progression-source-list"></div>
+            </details>
+            <div class="form-tree-row resource-child-row" id="rowProgressionEventSources">
+              <label class="form-tree-label" for="chkProgressionLootEvents">Loot from Events</label>
+              <div class="form-tree-control"><input id="chkProgressionLootEvents" type="checkbox" class="tree-checkbox">
+              </div>
+            </div>
+            <details class="progression-source-picker resource-child-row" id="progressionEventSourcePicker" open>
+              <summary>Events <span id="progressionEventSourceCount">0 selected</span></summary>
+              <div id="progressionEventSourceList" class="progression-source-list"></div>
+            </details>
+            <div class="form-tree-row resource-child-row" id="rowProgressionGateSources">
+              <label class="form-tree-label" for="chkProgressionLootGates">Loot from Gates</label>
+              <div class="form-tree-control"><input id="chkProgressionLootGates" type="checkbox" class="tree-checkbox">
+              </div>
+            </div>
+            <details class="progression-source-picker resource-child-row" id="progressionGateSourcePicker" open>
+              <summary>Gates <span id="progressionGateSourceCount">0 selected</span></summary>
+              <div id="progressionGateSourceList" class="progression-source-list"></div>
+            </details>
+            </div>
+            <div class="form-tree-row" id="rowProgressionChapterFallback">
+              <label class="form-tree-label" for="chkProgressionChapterFallback">Allow Chapter fallback</label>
+              <div class="form-tree-control"><input id="chkProgressionChapterFallback" type="checkbox"
+                  class="tree-checkbox"></div>
+            </div>
+            <div class="form-tree-row"><label class="form-tree-label" for="chkAllowStaminaPots">Allow the use of Stamina pots</label>
+              <div class="form-tree-control"><input id="chkAllowStaminaPots" type="checkbox" class="tree-checkbox"></div>
+            </div>
+            <div id="rowProgressionDrainBeforePots" class="form-tree-row resource-child-row"><label
+                class="form-tree-label" for="chkProgressionDrainBeforePots">Drain Stamina before pots</label>
+              <div class="form-tree-control"><input id="chkProgressionDrainBeforePots" type="checkbox" class="tree-checkbox"></div>
+            </div>
+            <div id="rowStaminaPotionPriority" class="form-tree-row resource-child-row"><label class="form-tree-label"
+                for="selectStaminaPotionPriority">Prioritize</label><div class="form-tree-control"><select
+                id="selectStaminaPotionPriority" class="tree-select compact-resource-select"><option value="small">Small pot</option><option
+                value="large">Large pot</option><option value="full">Full pot</option><option value="adventure">Adventure pot</option></select></div>
+            </div>
+            <div id="rowSmallStaminaPotLimit" class="form-tree-row resource-child-row"><label class="form-tree-label"
+                for="inputSmallStaminaPotLimit">Small pots limit</label><div class="form-tree-control"><span class="potion-limit-status"><span id="smallStaminaPotsUsed" class="potion-count-used">0 used</span><span id="smallStaminaPotsAvailable" class="potion-count-available">0 left</span></span><input
+                id="inputSmallStaminaPotLimit" type="number" class="tree-input-sm" min="0"></div></div>
+            <div id="rowLargeStaminaPotLimit" class="form-tree-row resource-child-row"><label class="form-tree-label"
+                for="inputLargeStaminaPotLimit">Large pots limit</label><div class="form-tree-control"><span class="potion-limit-status"><span id="largeStaminaPotsUsed" class="potion-count-used">0 used</span><span id="largeStaminaPotsAvailable" class="potion-count-available">0 left</span></span><input
+                id="inputLargeStaminaPotLimit" type="number" class="tree-input-sm" min="0"></div></div>
+            <div id="rowFullStaminaPotLimit" class="form-tree-row resource-child-row"><label class="form-tree-label"
+                for="inputFullStaminaPotLimit">Full pots limit</label><div class="form-tree-control"><span class="potion-limit-status"><span id="fullStaminaPotsUsed" class="potion-count-used">0 used</span><span id="fullStaminaPotsAvailable" class="potion-count-available">0 left</span></span><input
+                id="inputFullStaminaPotLimit" type="number" class="tree-input-sm" min="0"></div></div>
+            <div id="rowAdventureStaminaPotLimit" class="form-tree-row resource-child-row"><label class="form-tree-label"
+                for="inputAdventureStaminaPotLimit">Adventure pots limit</label><div class="form-tree-control"><span class="potion-limit-status"><span id="adventureStaminaPotsUsed" class="potion-count-used">0 used</span><span id="adventureStaminaPotsAvailable" class="potion-count-available">0 left</span></span><input
+                id="inputAdventureStaminaPotLimit" type="number" class="tree-input-sm" min="0"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="subviewProgressionLoot" class="subview-panel home-config-panel" style="display: none;">
+          <div class="panel-header-row">
+            <div class="panel-header">Loot history</div>
+            <div class="workspace-area-toolbar"><label for="progressionHistoryAreaTypeSelect">Type</label><select
+                id="progressionHistoryAreaTypeSelect" class="workspace-area-type-select">
+                <option value="gate">Gate</option>
+                <option value="dungeon">Dungeon</option>
+                <option value="event">Event</option>
+              </select><label for="progressionHistoryAreaSelect">Area</label><select id="progressionHistoryAreaSelect"
+                class="workspace-area-select"></select><button id="btnRefreshProgressionHistory"
+                class="btn btn-primary btn-sm workspace-icon-btn" type="button" title="Refresh loot history"
+                aria-label="Refresh loot history"><i data-lucide="rotate-cw"></i></button></div>
+          </div>
+          <pre id="progressionHistoryConsole" class="activity-latest-console" aria-live="polite">No loot recorded.</pre>
+          <div id="progressionHistoryContent" class="monster-config-content activity-history-content">
+            <div class="empty-state">No loot recorded for this account.</div>
+          </div>
+        </div>
+
+        <!-- Sub-panel: Chapters Farm -->
+        <div id="subviewChaptersFarm" class="subview-panel home-config-panel" style="display: none;">
+          <!-- Form Tree Rows (DarkBot Tree Style) -->
+          <div class="tree-form-container">
+            <!-- Row: Module -->
+            <div class="form-tree-row">
+              <label class="form-tree-label" for="selectFarmModule">Module</label>
+              <div class="form-tree-control">
+                <select id="selectFarmModule" class="tree-select">
+                  <option value="manual">Manual</option>
+                  <option value="automatic">Automatic</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-tree-row manual-farm-row" id="rowManualFarmControls">
+              <label class="form-tree-label" for="inputManualChapterCount">Manual Farm</label>
+              <div class="form-tree-control manual-farm-controls">
+                <select id="selectManualManga" class="tree-select" aria-label="Manga to farm">
+                  <option value="">Select manga</option>
+                </select>
+                <input type="number" id="inputManualChapterCount" min="1" max="1000" value="1" class="tree-input-sm"
+                  aria-label="Number of chapters">
+                <span class="unit-label">chapters</span>
+                <button id="btnStartManualFarm" class="btn btn-primary btn-sm"><i data-lucide="play"></i> Start</button>
+              </div>
+            </div>
+
+            <!-- Row: Working Manga -->
+            <div class="form-tree-row">
+              <label class="form-tree-label">Working manga</label>
+              <div class="form-tree-control">
+                <span id="workingMangaText" class="working-manga-box">-</span>
+              </div>
+            </div>
+
+            <!-- Row: Config Segmented Buttons -->
+            <div class="form-tree-row">
+              <label class="form-tree-label">Config</label>
+              <div class="form-tree-control">
+                <div class="segmented-btn-group" id="farmConfigToggle">
+                  <button type="button" class="segment-btn active" id="btnConfigScheduler"
+                    data-config="scheduler">Scheduler</button>
+                  <button type="button" class="segment-btn" id="btnConfigIndependent"
+                    data-config="independent">Independent</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tree Section: Safety -->
+            <div class="tree-section" id="sectionSafety">
+              <div class="tree-section-header" data-tree-section="sectionSafety">
+                <i class="tree-arrow" data-lucide="chevron-down" aria-hidden="true"></i>
+                <span class="tree-section-title">Safety</span>
+              </div>
+              <div class="tree-section-content">
+                <!-- Independent Delay (Inside Safety menu when Independent selected) -->
+                <div class="form-tree-row" id="rowIndependentDelay" style="display: none;">
+                  <label class="form-tree-label" for="selectFarmDelay">Delay</label>
+                  <div class="form-tree-control">
+                    <select id="selectFarmDelay" class="tree-select">
+                      <option value="0.5s">0.5s</option>
+                      <option value="1.0s" selected>1.0s</option>
+                      <option value="2.0s">2.0s</option>
+                      <option value="5.0s">5.0s</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="form-tree-row">
+                  <label class="form-tree-label" for="chkStopMaxStamina">Stop if Max Stamina reached</label>
+                  <div class="form-tree-control">
+                    <input type="checkbox" id="chkStopMaxStamina" checked class="tree-checkbox">
+                  </div>
+                </div>
+
+                <div class="form-tree-row">
+                  <label class="form-tree-label" for="inputMaxStaminaFarm">Max Stamina farm</label>
+                  <div class="form-tree-control input-unit-group">
+                    <input type="number" id="inputMaxStaminaFarm" min="0" max="1000" value="1000" placeholder="1000"
+                      class="tree-input-sm">
+                    <span class="unit-label">/ 1000</span>
+                  </div>
+                </div>
+
+                <div class="form-tree-row">
+                  <label class="form-tree-label" for="inputStopHourlyStaminaMin">Stop when hourly stamina is in</label>
+                  <div class="form-tree-control input-unit-group">
+                    <input type="number" id="inputStopHourlyStaminaMin" min="0" max="59" value="10" placeholder="10"
+                      class="tree-input-sm">
+                    <span class="unit-label">min</span>
+                  </div>
+                </div>
+
+                <div class="form-tree-row">
+                  <label class="form-tree-label" for="selectReactionType">Reaction Type</label>
+                  <div class="form-tree-control">
+                    <select id="selectReactionType" class="tree-select">
+                      <option value="1" selected>Like</option>
+                      <option value="2">Heart</option>
+                      <option value="3">Angry</option>
+                      <option value="4">Sad</option>
+                      <option value="5">Happy</option>
+                      <option value="random">Random</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tree Section: Mangas -->
+            <div class="tree-section" id="sectionMangas">
+              <div class="tree-section-header" data-tree-section="sectionMangas">
+                <i class="tree-arrow" data-lucide="chevron-down" aria-hidden="true"></i>
+                <span class="tree-section-title">Mangas</span>
+              </div>
+              <div class="tree-section-content">
+                <!-- Manga URL and Add Button in Same Line -->
+                <div class="form-tree-row form-tree-row-nowrap">
+                  <label class="form-tree-label" for="inputMangaTarget">Manga URL</label>
+                  <div class="form-tree-control input-action-inline">
+                    <input type="text" id="inputMangaTarget"
+                      placeholder="e.g. The-Investor-Who-Sees-The-Future or full URL" class="tree-input-flex">
+                    <button id="btnAddManga" class="btn btn-primary btn-sm"><i data-lucide="plus"></i> Add</button>
+                  </div>
+                </div>
+
+                <!-- Manga List (without URL) -->
+                <div id="mangaListTable" class="manga-table-container">
+                  <div class="empty-state">No manga configured yet. Add one above.</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tree Section: Running -->
+            <div class="tree-section" id="sectionRunning">
+              <div class="tree-section-header" data-tree-section="sectionRunning">
+                <i class="tree-arrow" data-lucide="chevron-down" aria-hidden="true"></i>
+                <span class="tree-section-title">Running</span>
+              </div>
+              <div class="tree-section-content">
+                <div class="farm-terminal-container">
+                  <div class="log-toolbar">
+                    <span class="log-label">Farm Console Output</span>
+                    <button id="btnClearFarmTerminal" class="btn btn-sm">Clear</button>
+                  </div>
+                  <div id="farmTerminalOutput" class="farm-terminal">
+                    <div class="terminal-line text-muted">[Ready] Farm terminal initialized.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </section>

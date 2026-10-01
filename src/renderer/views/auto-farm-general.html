@@ -1,0 +1,76 @@
+        <div id="subviewHomeAutoFarm" class="subview-panel home-config-panel" style="display: none;">
+          <div class="panel-header-row">
+            <div class="panel-header">Auto Farm settings</div>
+            <button id="btnSaveAutoFarm" class="btn btn-primary btn-sm" type="button">Save settings</button>
+          </div>
+          <div class="auto-farm-progress-box">
+            <div class="panel-header-row">
+              <div class="panel-header">Server progress</div>
+              <span id="autoFarmServerState" class="auto-farm-state-badge">Unknown</span>
+            </div>
+            <div id="autoFarmProgressGrid" class="auto-farm-progress-grid">
+              <div class="empty-state">Log in to read server Auto Farm progress.</div>
+            </div>
+          </div>
+          <div class="tree-form-container">
+            <div class="form-tree-row"><label class="form-tree-label" for="inputAutoFarmTotal">Total monsters to
+                kill</label>
+              <div class="form-tree-control"><input id="inputAutoFarmTotal" type="number" min="0" class="tree-input-sm">
+              </div>
+            </div>
+            <div class="form-tree-row"><label class="form-tree-label" for="inputAutoFarmHpPots">HP potions limit</label>
+              <div class="form-tree-control"><input id="inputAutoFarmHpPots" type="number" min="0"
+                  class="tree-input-sm"></div>
+            </div>
+            <div class="form-tree-row"><label class="form-tree-label" for="inputAutoFarmSmallPots">Small Stamina
+                pots</label>
+              <div class="form-tree-control"><input id="inputAutoFarmSmallPots" type="number" min="0"
+                  class="tree-input-sm"></div>
+            </div>
+            <div class="form-tree-row"><label class="form-tree-label" for="inputAutoFarmLargePots">Large Stamina
+                pots</label>
+              <div class="form-tree-control"><input id="inputAutoFarmLargePots" type="number" min="0"
+                  class="tree-input-sm"></div>
+            </div>
+            <div class="form-tree-row"><label class="form-tree-label" for="inputAutoFarmFullPots">Full Stamina
+                pots</label>
+              <div class="form-tree-control"><input id="inputAutoFarmFullPots" type="number" min="0"
+                  class="tree-input-sm"></div>
+            </div>
+            <div class="form-tree-row"><label class="form-tree-label" for="inputAutoFarmAdventurePots">Adventure Stamina
+                pots</label>
+              <div class="form-tree-control"><input id="inputAutoFarmAdventurePots" type="number" min="0"
+                  class="tree-input-sm"></div>
+            </div>
+            <div class="form-tree-row"><label class="form-tree-label" for="selectAutoFarmPotionPriority">Prioritize
+                Stamina potion</label>
+              <div class="form-tree-control"><select id="selectAutoFarmPotionPriority" class="tree-select">
+                  <option value="0">None</option>
+                  <option value="30">Small</option>
+                  <option value="251">Large</option>
+                  <option value="35">Full</option>
+                  <option value="359">Adventure</option>
+                </select></div>
+            </div>
+            <div class="form-tree-row"><label class="form-tree-label" for="chkAutoFarmLootLevel">Auto loot to
+                level</label>
+              <div class="form-tree-control"><input id="chkAutoFarmLootLevel" type="checkbox" class="tree-checkbox">
+              </div>
+            </div>
+            <div class="form-tree-row resource-child-row"><label class="form-tree-label" for="inputAutoFarmExpLeft">EXP
+                left threshold</label>
+              <div class="form-tree-control input-unit-group"><input id="inputAutoFarmExpLeft" type="number" min="0"
+                  max="100" class="tree-input-sm"><span class="unit-label">%</span></div>
+            </div>
+          </div>
+          <div class="auto-farm-server-targets-box">
+            <div class="panel-header-row">
+              <div class="panel-header">Targets</div><button id="btnRefreshAutoFarmServer"
+                class="btn btn-primary btn-sm workspace-icon-btn" type="button" title="Refresh server targets"
+                aria-label="Refresh server targets"><i data-lucide="rotate-cw"></i></button>
+            </div>
+            <div id="autoFarmServerTargetsContent" class="auto-farm-server-targets-content">
+              <div class="empty-state">Log in to read server Auto Farm targets.</div>
+            </div>
+          </div>
+        </div>

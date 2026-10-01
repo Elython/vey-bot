@@ -8,11 +8,13 @@ const { stateStore } = require('./stateStore');
 const { Logger } = require('../main/logger');
 
 class GameReader {
-  constructor(webContents, gameAPI, httpClient, accountName = null) {
+  constructor(webContents, gameAPI, httpClient, accountName = null, statsService = null, areaAccessService = null) {
     this.webContents = webContents;
     this.gameAPI = gameAPI;
     this.http = httpClient;
     this.accountName = accountName;
+    this.statsService = statsService;
+    this.areaAccessService = areaAccessService;
     this.farmedEnergyPromise = null;
   }
 
@@ -27,10 +29,31 @@ class GameReader {
 
   async fetchStatsNow() {
     if (!this.gameAPI) throw new Error('GameAPI is not configured');
+    if (this.statsService) {
+      try {
+        await this.statsService.read({ maxAgeMs: 0 });
+        return stateStore.getState();
+      } catch (error) {
+        Logger.logClient(this.accountName, `Stats refresh failed: ${error.cause?.message || error.message}`);
+        throw (error.cause || error);
+      }
+    }
+    const resourcesRead = (async () => {
+      // HP/Mana live on wave pages, but unlocked waves are account-specific.
+      // Never use a universal fallback such as Grakthar 2: a low-level account
+      // legitimately receives HTTP 503 there and that unrelated read must not
+      // poison combat on an accessible Gate.
+      const route = this.areaAccessService
+        ? await this.areaAccessService.getPlayerResourceRoute()
+        : null;
+      return route
+        ? this.gameAPI.fetchPlayerResources(route.gateId, route.wave)
+        : (this.gameAPI?.fetchPlayerResources ? this.gameAPI.fetchPlayerResources() : {});
+    })();
     const [statsResult, dashboardResult, resourcesResult] = await Promise.allSettled([
       this.gameAPI.fetchStats(),
       this.gameAPI.fetchDashboard(),
-      this.gameAPI.fetchPlayerResources(3, 5),
+      resourcesRead,
     ]);
 
     if (statsResult.status === 'rejected' && dashboardResult.status === 'rejected') {
@@ -39,9 +62,12 @@ class GameReader {
       throw new Error(message);
     }
 
+    // Dashboard/topbar Stamina can remain at the pre-potion value. Keep it as
+    // a fallback for fields absent from Stats, but let stats.php win whenever
+    // both authenticated resources expose the same value.
     const raw = {
-      ...(statsResult.status === 'fulfilled' ? statsResult.value : {}),
       ...(dashboardResult.status === 'fulfilled' ? dashboardResult.value : {}),
+      ...(statsResult.status === 'fulfilled' ? statsResult.value : {}),
     };
     const updates = { isConnected: true };
     if (raw.stamina !== undefined || raw.maxStamina !== undefined) {
@@ -156,6 +182,7 @@ class GameReader {
     }
 
     try {
+      const observedAt = Date.now();
       const domState = await this.webContents.executeJavaScript(`
         (() => {
           const pairFromElement = (element) => {
@@ -198,7 +225,7 @@ class GameReader {
         })();
       `);
 
-      const updates = { isConnected: true };
+      const updates = {};
       // The hidden page may keep showing its pre-reaction stamina until the
       // site reloads. Only a verified MutationObserver event may let that DOM
       // value replace the authoritative Stats response.
@@ -208,7 +235,15 @@ class GameReader {
       }
       if (domState.hp) updates.hp = domState.hp;
       if (domState.mp) updates.mp = domState.mp;
-      stateStore.update(updates);
+      stateStore.update({ isConnected: true });
+      if (this.statsService) {
+        this.statsService.observePartial(updates, {
+          observedAt,
+          source: syncStamina ? 'verified companion DOM mutation' : 'verified companion DOM resources',
+        });
+      } else {
+        stateStore.update(updates);
+      }
       const stored = stateStore.getState();
       return {
         ...domState,
@@ -239,6 +274,16 @@ class GameReader {
       stateStore.update({ isConnected: false });
       return { isConnected: false, error: error.message };
     }
+  }
+
+  observeStats(partial, source = 'verified game action response', options = {}) {
+    if (this.statsService) return this.statsService.observePartial(partial, { ...options, source });
+    stateStore.update(partial);
+    return { applied: true };
+  }
+
+  observeResources(resources, source = 'verified authenticated page resources', options = {}) {
+    return this.observeStats(resources, source, options);
   }
 }
 

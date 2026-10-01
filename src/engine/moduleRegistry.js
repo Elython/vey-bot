@@ -4,8 +4,9 @@ const BUILTIN_MODULES = Object.freeze({
   idle: { id: 'idle', label: 'Idle', status: 'ready', mapTypes: [] },
   gates: { id: 'gates', label: 'Gates', status: 'ready', mapTypes: ['gate'] },
   dungeons: { id: 'dungeons', label: 'Dungeons', status: 'ready', mapTypes: ['dungeon'] },
-  gates_dungeons: { id: 'gates_dungeons', label: 'Dungeons → Gates', status: 'partial', mapTypes: ['gate', 'dungeon'] },
   event: { id: 'event', label: 'Event', status: 'ready', mapTypes: ['event'] },
+  battle_pass: { id: 'battle_pass', label: 'Battle Pass', status: 'ready', mapTypes: [] },
+  adventure_quests: { id: 'adventure_quests', label: 'Adv Quests', status: 'ready', mapTypes: [] },
   pvp: { id: 'pvp', label: 'PvP', status: 'deferred', mapTypes: [] },
 });
 
@@ -30,7 +31,7 @@ class ModuleRegistry {
 
   resolveArea(areaKey) {
     const area = getMonsterArea(areaKey);
-    if (!area || area.key === 'polyhedral_crucible') return null;
+    if (!area) return null;
     if (area.type === 'gate') return { gateId: area.gateId, wave: area.wave, areaKey: area.key };
     if (area.type === 'event') return { kind: 'event', eventId: area.eventId, wave: area.wave, areaKey: area.key };
     if (area.type === 'dungeon') return { kind: 'dungeon', areaKey: area.key };
@@ -39,17 +40,6 @@ class ModuleRegistry {
 
   resolveScan(general = {}) {
     const definition = this.modules.get(general.module || 'idle');
-    if (definition?.id === 'gates_dungeons') {
-      const dungeon = getMonsterArea(general.dungeonMap);
-      const gate = getMonsterArea(general.gateMap);
-      const fallback = gate?.type === 'gate'
-        ? { gateId: gate.gateId, wave: gate.wave, areaKey: gate.key }
-        : null;
-      if (dungeon?.type === 'dungeon' && dungeon.key !== 'polyhedral_crucible') {
-        return { kind: 'dungeon', areaKey: dungeon.key, fallback };
-      }
-      return fallback;
-    }
     if (definition?.id === 'event') {
       const eventArea = getMonsterArea(general.eventMap || general.map);
       if (eventArea?.type === 'event' && Number.isInteger(eventArea.eventId)) {
@@ -62,7 +52,7 @@ class ModuleRegistry {
     if (area.type === 'gate' && !area.eventId) {
       return { gateId: area.gateId, wave: area.wave, areaKey: area.key };
     }
-    if (area.type === 'dungeon' && area.key !== 'polyhedral_crucible') {
+    if (area.type === 'dungeon') {
       return { kind: 'dungeon', areaKey: area.key };
     }
     return null;
@@ -77,9 +67,7 @@ class ModuleRegistry {
       status: definition.status,
       mapKey: area?.key || null,
       mapLabel: area?.label || null,
-      displayName: definition.id === 'gates_dungeons'
-        ? `${definition.label} · ${getMonsterArea(general.dungeonMap)?.label || 'No Dungeon'} · ${getMonsterArea(general.gateMap)?.label || 'No Gate'}`
-        : area ? `${definition.label} · ${area.label}` : definition.label,
+      displayName: area ? `${definition.label} · ${area.label}` : definition.label,
     };
   }
 }

@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { hashCanonical } = require('./loadoutCatalog');
 const { NORMAL_ATTACKS } = require('./attackPlanner');
-const { getDataDir } = require('../main/paths');
+const { getDataDir } = require('../main/dataPaths');
 
 const DAMAGE_OBSERVATION_SCHEMA_VERSION = 1;
 const DEFAULT_PATH = path.join(getDataDir(), 'damage_observations.json');
@@ -216,6 +216,37 @@ class DamageObservationStore {
       unclassifiedSamples: records.reduce((total, record) => total + record.unclassifiedSamples, 0),
       latest: records[0] || null,
     };
+  }
+
+  purgeAccount(accountName) {
+    if (!accountName) return 0;
+    const expectedAccountKey = accountKey(accountName);
+    let removed = 0;
+    for (const [hash, record] of Object.entries(this.data.records)) {
+      if (record.context?.accountKey !== expectedAccountKey) continue;
+      delete this.data.records[hash];
+      removed += 1;
+    }
+    if (removed > 0) this._write();
+    return removed;
+  }
+
+  exportAccount(accountName) {
+    const expectedAccountKey = accountKey(accountName);
+    return Object.fromEntries(Object.entries(this.data.records)
+      .filter(([, record]) => record.context?.accountKey === expectedAccountKey)
+      .map(([key, record]) => [key, clone(record)]));
+  }
+
+  replaceAccount(accountName, records = {}) {
+    if (!records || typeof records !== 'object' || Array.isArray(records)) throw new Error('Invalid damage-observation backup');
+    this.purgeAccount(accountName);
+    const expectedAccountKey = accountKey(accountName);
+    for (const [key, record] of Object.entries(records)) {
+      if (record?.context?.accountKey === expectedAccountKey) this.data.records[key] = clone(record);
+    }
+    this._trimRecords();
+    this._write();
   }
 
   _read() {

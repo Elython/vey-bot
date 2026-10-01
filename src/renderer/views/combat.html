@@ -1,0 +1,125 @@
+        <div id="subviewHomeEquipment" class="subview-panel home-config-panel" style="display: none;">
+          <div id="combatPvePanel">
+          <div class="combat-summary-shell" aria-live="polite">
+            <button id="btnRefreshAttackStrategy"
+              class="btn btn-primary btn-sm workspace-icon-btn combat-summary-refresh" type="button"
+              title="Refresh combat data" aria-label="Refresh combat data"><i data-lucide="rotate-cw"></i></button>
+            <div class="combat-summary-grid">
+              <div class="combat-summary-card"><span>Stats</span>
+                <div><b>ATK</b><strong id="combatPlayerAttack">-</strong><b>DEF</b><strong
+                    id="combatPlayerDefense">-</strong></div>
+              </div>
+              <div class="combat-summary-card"><span>Gear</span>
+                <div><b>ATK</b><strong id="combatGearAttack">-</strong><b>DEF</b><strong
+                    id="combatGearDefense">-</strong></div>
+              </div>
+              <div class="combat-summary-card"><span>Pets</span>
+                <div><b>ATK</b><strong id="combatPetAttack">-</strong><b>DEF</b><strong id="combatPetDefense">-</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tree-form-container combat-tree-form">
+            <div class="form-tree-row">
+              <label class="form-tree-label" for="selectAttackMode">Attack module</label>
+              <div class="form-tree-control inline-control-with-button"><select id="selectAttackMode"
+                  class="tree-select">
+                  <option value="fixed">Fixed</option>
+                  <option value="adaptive">Adaptive</option>
+                </select><button id="btnAttackModuleInfo" class="icon-info-btn" type="button"
+                  title="What does this attack module do?" aria-label="Describe selected attack module"><i
+                    data-lucide="circle-help"></i></button></div>
+            </div>
+            <div class="form-tree-row resource-child-row" id="rowFixedAttack">
+              <label class="form-tree-label" for="selectFixedAttack">Fixed hit</label>
+              <div class="form-tree-control"><select id="selectFixedAttack" class="tree-select">
+                  <option value="1">x1</option>
+                  <option value="10">x10</option>
+                  <option value="50">x50</option>
+                  <option value="100">x100</option>
+                  <option value="200">x200</option>
+                  <option value="1000">x1000</option>
+                </select></div>
+            </div>
+            <div class="form-tree-row resource-child-row" id="rowAdaptiveMax">
+              <label class="form-tree-label" for="selectMaxAttack">Maximum adaptive hit</label>
+              <div class="form-tree-control"><select id="selectMaxAttack" class="tree-select">
+                  <option value="1">x1</option>
+                  <option value="10">x10</option>
+                  <option value="50">x50</option>
+                  <option value="100">x100</option>
+                  <option value="200">x200</option>
+                  <option value="1000">x1000</option>
+                </select></div>
+            </div>
+            <div class="form-tree-row resource-child-row" id="rowAdaptiveOvershoot">
+              <label class="form-tree-label" for="inputAttackOvershoot">Allowed target overshoot</label>
+              <div class="form-tree-control input-unit-group"><input id="inputAttackOvershoot" type="number" min="0"
+                  max="500" class="tree-input-sm"><span class="unit-label">%</span></div>
+            </div>
+            <div class="form-tree-row resource-child-row" id="rowAdaptiveFailSafe">
+              <label class="form-tree-label" for="chkAdaptiveFailSafe">Force x1 near target</label>
+              <div class="form-tree-control"><input id="chkAdaptiveFailSafe" type="checkbox" class="tree-checkbox">
+              </div>
+            </div>
+            <div class="form-tree-row resource-child-row" id="rowAdaptiveFailSafePercent">
+              <label class="form-tree-label" for="inputAdaptiveFailSafePercent">Target progress reached</label>
+              <div class="form-tree-control input-unit-group"><input id="inputAdaptiveFailSafePercent" type="number"
+                  min="0" max="100" class="tree-input-sm"><span class="unit-label">%</span></div>
+            </div>
+            <div class="form-tree-row resource-child-row" id="rowAdaptiveRequireTargetStamina">
+              <label class="form-tree-label" for="chkAdaptiveRequireTargetStamina">Require Stamina to reach
+                target</label>
+              <div class="form-tree-control"><input id="chkAdaptiveRequireTargetStamina" type="checkbox"
+                  class="tree-checkbox"></div>
+            </div>
+            <div class="form-tree-row resource-child-row" id="rowAdaptiveNuke">
+              <label class="form-tree-label" for="chkAdaptiveNuke">Nuke enemy</label>
+              <div class="form-tree-control"><input id="chkAdaptiveNuke" type="checkbox" class="tree-checkbox"></div>
+            </div>
+            <div class="form-tree-row resource-grandchild-row" id="rowAdaptiveNukeAttack">
+              <label class="form-tree-label" for="selectAdaptiveNukeAttack">Nuke hit</label>
+              <div class="form-tree-control"><select id="selectAdaptiveNukeAttack" class="tree-select">
+                  <option value="auto">Auto</option>
+                  <option value="normal:1">x1</option>
+                  <option value="normal:10">x10</option>
+                  <option value="normal:50">x50</option>
+                  <option value="normal:100">x100</option>
+                  <option value="normal:200">x200</option>
+                  <option value="normal:1000">x1000</option>
+                </select></div>
+            </div>
+            <div class="form-tree-row resource-grandchild-row" id="rowAdaptiveNukeAbilities">
+              <label class="form-tree-label" for="chkAdaptiveNukeAbilities">Allow abilities for Nuke</label>
+              <div class="form-tree-control"><input id="chkAdaptiveNukeAbilities" type="checkbox" class="tree-checkbox">
+              </div>
+            </div>
+            <div class="form-tree-row">
+              <label class="form-tree-label" for="selectGearPve">Gear set</label>
+              <div class="form-tree-control inline-control-with-button"><select id="selectGearPve" class="tree-select">
+                  <option value="default">Default</option>
+                </select><button id="btnGearSetInfo" class="monster-stats-help loadout-stats-help" type="button"
+                  title="View Gear set" aria-label="View selected Gear set information"><i
+                    data-lucide="circle-help"></i></button></div>
+            </div>
+            <div class="form-tree-row">
+              <label class="form-tree-label" for="selectPetsPve">Pet set</label>
+              <div class="form-tree-control inline-control-with-button"><select id="selectPetsPve" class="tree-select">
+                  <option value="default">Default</option>
+                </select><button id="btnPetSetInfo" class="monster-stats-help loadout-stats-help" type="button"
+                  title="View Pet set" aria-label="View selected Pet set information"><i
+                    data-lucide="circle-help"></i></button></div>
+            </div>
+            <div class="form-tree-row">
+              <label class="form-tree-label" for="chkAllowClassAbilities">Allow class abilities</label>
+              <div class="form-tree-control"><input id="chkAllowClassAbilities" class="tree-checkbox" type="checkbox">
+              </div>
+            </div>
+            <div class="form-tree-row resource-child-row combat-ability-row">
+              <div class="form-tree-control combat-ability-tree">
+                <div id="combatUnlockedAbilities" class="combat-unlocked-abilities">Not read</div>
+              </div>
+            </div>
+          </div>
+          </div>
+        </div>

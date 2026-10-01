@@ -1,0 +1,25 @@
+{
+  "status": "success",
+  "message": "You have dealt <strong>126,659</strong> damage to <strong>Example Monster</strong>!",
+  "hp": { "value": 625776, "percent": 63, "max": 1000000 },
+  "leaderboard": [
+    { "ID": 100001, "USERNAME": "Redacted Player", "PICTURE": "redacted", "DAMAGE_DEALT": 126659 }
+  ],
+  "phase": {
+    "current": 1,
+    "total": 0,
+    "changed": false,
+    "image": "",
+    "hp": null,
+    "global_hp": { "value": 625776, "max": 1000000, "percent": 63 }
+  },
+  "stamina": 2269,
+  "mana": 200,
+  "xp_delta": 204,
+  "logs": [
+    { "USERNAME": "Redacted Player", "SKILL_NAME": "Slash", "DAMAGE": 126659, "EXTRA_INFO": "Critical hit (x1.92 damage)." }
+  ],
+  "retaliation": { "damage": 0, "user_hp_after": 559 },
+  "totaldmgdealt": 126659,
+  "private_boss": null
+}

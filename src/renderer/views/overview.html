@@ -1,0 +1,142 @@
+      <!-- SCREEN 2: Home Tab (Logged In) -->
+      <section id="viewHome" class="view-panel" style="display: none;">
+        <!-- Top Stats Row (Black Box with Stats and Top-Right Refresh Button) -->
+        <div class="stats-top-bar" id="homeStatsBar">
+          <button id="btnRefreshStats" class="stat-refresh-btn" title="Refresh Stats"><i
+              data-lucide="rotate-cw"></i></button>
+          <div class="stats-scroll-row" id="statsScrollRow">
+            <div class="stat-pill" title="Stamina (Current / Max (+Next Increase))">
+              <i data-lucide="zap"></i>
+              <span id="statStamina">- / -</span>
+              <span id="statStaminaNext" class="stamina-next" style="display: none;"></span>
+            </div>
+            <div class="stat-pill" title="Health (Current / Max)">
+              <i data-lucide="heart-pulse"></i>
+              <span id="statHealth">- / -</span>
+            </div>
+            <div class="stat-pill" title="Mana (Current / Max)">
+              <i data-lucide="droplets"></i>
+              <span id="statMana">- / -</span>
+            </div>
+            <div class="stat-pill" title="Gold">
+              <i data-lucide="coins"></i>
+              <span id="statGold">-</span>
+            </div>
+            <div class="stat-pill" title="Gems">
+              <i data-lucide="gem"></i>
+              <span id="statGems">-</span>
+            </div>
+            <div class="stat-pill" title="Level & EXP">
+              <i data-lucide="award"></i>
+              <span id="statLevel">Lv. - (-)</span>
+            </div>
+            <div class="stat-pill" title="Energy Farmed (12h cycle)">
+              <i data-lucide="book-open"></i>
+              <span id="statEnergy">-</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="bot-status-panel overview-status-panel" id="homeRuntimeStatus" aria-live="polite">
+          <span>State <strong id="botStateText">Stopped</strong></span>
+          <span>Action <strong id="botActionText">-</strong></span>
+          <span>Target <strong id="botTargetText">-</strong></span>
+          <span id="botModeText" class="bot-mode-badge">Dry run</span>
+        </div>
+
+        <div class="overview-current-panel" id="overviewCurrentPanel">
+          <div class="overview-current-heading">
+            <span class="overview-current-label">Current operation</span>
+            <strong id="overviewTargetName">Nothing running</strong>
+          </div>
+          <div class="overview-current-reason" id="overviewActionReason">Choose a module and press Start.</div>
+          <div class="overview-progress-row">
+            <div class="overview-progress-track">
+              <div id="overviewProgressFill" class="overview-progress-fill"></div>
+            </div>
+            <span id="overviewProgressText">-</span>
+          </div>
+        </div>
+
+        <section id="overviewMonsterPhasePvpPanel" class="statistics-panel overview-monster-phase-panel"
+          style="display:none;" aria-live="polite">
+          <div class="panel-header-row">
+            <div>
+              <div class="statistics-panel-title">Phase 3 PvP</div>
+              <div class="panel-subtitle">The game Server AI is choosing attacks in a hidden authenticated battle page.</div>
+            </div>
+            <span id="monsterPhasePvpLiveBadge" class="monster-phase-live-badge">Opening</span>
+          </div>
+          <div class="combat-pvp-status">
+            <span>Status</span><strong id="monsterPhasePvpStatus">Opening duel</strong>
+            <span>Opponent</span><strong id="monsterPhasePvpOpponent">—</strong>
+            <span>Battle ID</span><strong id="monsterPhasePvpActiveId">—</strong>
+            <span>Watcher</span><strong id="monsterPhasePvpWatcher">Starting</strong>
+          </div>
+        </section>
+
+        <div class="overview-info-grid" id="overviewInfoGrid">
+          <section class="overview-info-card">
+            <span class="overview-card-label">Module</span>
+            <strong id="overviewModuleName">Idle</strong>
+            <span id="overviewConnectionText" class="overview-card-detail">Session unavailable</span>
+          </section>
+          <section class="overview-info-card">
+            <span class="overview-card-label">Progression</span>
+            <strong id="overviewProgressionState">Disabled</strong>
+            <span id="overviewProgressionXp" class="overview-card-detail">Eligible loot XP: -</span>
+          </section>
+          <section class="overview-info-card overview-session-card">
+            <span class="overview-card-label">This run</span>
+            <div class="overview-session-metrics">
+              <span>Kills <strong id="overviewSessionKills">0</strong></span>
+              <span>Loot <strong id="overviewSessionLoot">0</strong></span>
+              <span>Damage <strong id="overviewSessionDamage">0</strong></span>
+              <span>Stamina pots <strong id="overviewSessionStaminaPots">0</strong></span>
+              <span>Mana pots <strong id="overviewSessionManaPots">0</strong></span>
+              <span>HP pots <strong id="overviewSessionHealthPots">0</strong></span>
+              <span>Errors <strong id="overviewSessionErrors">0</strong></span>
+            </div>
+          </section>
+          <section class="overview-info-card overview-potions-card">
+            <span class="overview-card-label">Potion inventory</span>
+            <div id="overviewPotionCounters" class="overview-potion-counters">
+              <span class="overview-card-detail">Read when a battle page is available.</span>
+            </div>
+          </section>
+        </div>
+
+        <section id="overviewCubePvpPanel" class="statistics-panel overview-cube-pvp-panel" style="display:none;">
+          <div class="panel-header-row">
+            <div class="statistics-panel-title">Cube PvP</div>
+            <button id="btnOpenCubePvpMatch" class="btn btn-secondary btn-sm" type="button"><i
+                data-lucide="external-link"></i><span>Open match</span></button>
+          </div>
+          <div class="combat-pvp-status" aria-live="polite">
+            <span>Status</span><strong id="cubePvpStatus">Idle</strong>
+            <span>Match</span><strong id="cubePvpMatch">—</strong>
+            <span>Slot</span><strong id="cubePvpSlot">—</strong>
+            <span>Cooldown</span><strong id="cubePvpCooldown">—</strong>
+            <span>Waiting on</span><strong id="cubePvpWaitReason">—</strong>
+            <span>Last state</span><strong id="cubePvpLastState">—</strong>
+          </div>
+        </section>
+
+        <section class="overview-console-panel" id="overviewConsolePanel">
+          <div class="log-toolbar">
+            <span class="log-label">Live Console</span>
+            <div class="log-toolbar-actions"><select id="logCategoryFilter" class="log-filter-select"
+                aria-label="Filter live console">
+                <option value="all">All activity</option>
+                <option value="attack">Attacks</option>
+                <option value="scan">Scanning</option>
+                <option value="loot">Looting</option>
+                <option value="chapter">Chapters</option>
+                <option value="potion">Potions</option>
+                <option value="heal">Healing</option>
+                <option value="auto-farm">Auto Farm</option>
+                <option value="system">System</option>
+              </select><button id="btnClearLiveLogs" class="btn btn-sm">Clear</button></div>
+          </div>
+          <div id="logConsole" class="log-console overview-log-console"></div>
+        </section>

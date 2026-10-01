@@ -7,9 +7,11 @@
  */
 
 const { BrowserWindow, session, app } = require('electron');
+const { icons: lucideIcons } = require('lucide');
 const path = require('path');
 const { Logger } = require('./logger');
 const { SessionManager } = require('./sessionManager');
+const { installZoomShortcuts } = require('./zoomController');
 
 const DEFAULT_GAME_URL = 'https://demonicscans.org/game_dash.php';
 const GAME_ORIGIN = 'https://demonicscans.org/';
@@ -23,6 +25,51 @@ function isAllowedRemoteUrl(rawUrl) {
     return url.protocol === 'https:' && ALLOWED_REMOTE_HOSTS.has(url.hostname);
   } catch {
     return false;
+  }
+}
+
+function normalizeBattleUrl(rawUrl) {
+  if (typeof rawUrl !== 'string' || rawUrl.length === 0 || rawUrl.length > 300) return null;
+  try {
+    const url = new URL(rawUrl, GAME_ORIGIN);
+    if (url.origin !== new URL(GAME_ORIGIN).origin || url.pathname !== '/battle.php' || url.hash) return null;
+    const id = url.searchParams.get('id');
+    const dgmid = url.searchParams.get('dgmid');
+    const instanceId = url.searchParams.get('instance_id');
+    if (/^\d+$/.test(String(id || '')) && !dgmid && !instanceId) {
+      return `${GAME_ORIGIN}battle.php?id=${encodeURIComponent(id)}`;
+    }
+    if (!id && /^\d+$/.test(String(dgmid || '')) && /^\d+$/.test(String(instanceId || ''))) {
+      return `${GAME_ORIGIN}battle.php?dgmid=${encodeURIComponent(dgmid)}&instance_id=${encodeURIComponent(instanceId)}`;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeCubePvpMatchUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl, GAME_ORIGIN);
+    if (url.origin !== new URL(GAME_ORIGIN).origin || url.pathname !== '/pvp_style_battle.php' || url.searchParams.get('source') !== 'cube') return null;
+    for (const field of ['instance_id', 'node_id', 'match_no']) {
+      if (!/^\d+$/.test(String(url.searchParams.get(field) || ''))) return null;
+    }
+    return `${GAME_ORIGIN}pvp_style_battle.php?source=cube&instance_id=${encodeURIComponent(url.searchParams.get('instance_id'))}&node_id=${encodeURIComponent(url.searchParams.get('node_id'))}&match_no=${encodeURIComponent(url.searchParams.get('match_no'))}`;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeMonsterPhasePvpUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl, GAME_ORIGIN);
+    const activeId = url.searchParams.get('active_id');
+    if (url.origin !== new URL(GAME_ORIGIN).origin || url.pathname !== '/pvp_style_battle.php'
+      || url.searchParams.get('source') !== 'monster_phase' || !/^\d+$/.test(String(activeId || ''))) return null;
+    return `${GAME_ORIGIN}pvp_style_battle.php?source=monster_phase&active_id=${encodeURIComponent(activeId)}`;
+  } catch {
+    return null;
   }
 }
 
@@ -40,7 +87,14 @@ class WindowManager {
     this.gameSetupPromise = null;
     this.gameSetupAccount = null;
     this.addAccountWindow = null;
+    this.cubePvpWatcher = null;
+    this.cubePvpWatcherAccount = null;
+    this.cubePvpWatcherUrl = null;
+    this.monsterPhasePvpWatcher = null;
+    this.monsterPhasePvpWatcherAccount = null;
+    this.monsterPhasePvpWatcherUrl = null;
     this.capturedLoginAccount = null;
+    this.mainZoomCleanup = null;
   }
 
   /**
@@ -71,14 +125,20 @@ class WindowManager {
     this.mainWindow.webContents.on('will-navigate', (event, url) => {
       if (!url.startsWith('file:')) event.preventDefault();
     });
+    this.mainZoomCleanup?.();
+    this.mainZoomCleanup = installZoomShortcuts(this.mainWindow.webContents);
 
     this.mainWindow.on('closed', () => {
+      this.mainZoomCleanup?.();
+      this.mainZoomCleanup = null;
       if (this.gameWindow && !this.gameWindow.isDestroyed()) {
         this.gameWindow.destroy();
       }
       if (this.addAccountWindow && !this.addAccountWindow.isDestroyed()) {
         this.addAccountWindow.destroy();
       }
+      this.destroyCubePvpWatcher();
+      this.destroyMonsterPhasePvpWatcher();
       this.mainWindow = null;
       app.quit();
     });
@@ -143,7 +203,9 @@ class WindowManager {
           contextIsolation: true,
           nodeIntegration: false,
           sandbox: true,
-          backgroundThrottling: false,
+          // Keep the authenticated renderer alive while hidden, but let
+          // Chromium throttle the site's recurring timers and status polls.
+          backgroundThrottling: true,
         },
       });
       this.gameWindowAccount = accountName;
@@ -439,15 +501,28 @@ class WindowManager {
     const webContents = this.getGameWebContents();
     if (!webContents || webContents.isDestroyed()) return false;
     try {
+      const arrowLeftIcon = JSON.stringify(lucideIcons.ArrowLeft);
       return await webContents.executeJavaScript(`
         (() => {
           if (document.getElementById('__veyraBrowserBack')) return true;
           const button = document.createElement('button');
           button.id = '__veyraBrowserBack';
           button.type = 'button';
-          button.textContent = '← Back';
           button.title = 'Go to the previous page';
           button.setAttribute('aria-label', 'Go to the previous page');
+          const svgNamespace = 'http://www.w3.org/2000/svg';
+          const icon = document.createElementNS(svgNamespace, 'svg');
+          Object.entries({
+            width: '14', height: '14', viewBox: '0 0 24 24', fill: 'none',
+            stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+          }).forEach(([name, value]) => icon.setAttribute(name, value));
+          icon.setAttribute('aria-hidden', 'true');
+          for (const [tagName, attributes] of ${arrowLeftIcon}) {
+            const child = document.createElementNS(svgNamespace, tagName);
+            Object.entries(attributes).forEach(([name, value]) => child.setAttribute(name, String(value)));
+            icon.appendChild(child);
+          }
+          button.append(icon, document.createTextNode('Back'));
           Object.assign(button.style, {
             position: 'fixed',
             top: '12px',
@@ -462,6 +537,9 @@ class WindowManager {
             lineHeight: '1',
             cursor: 'pointer',
             boxShadow: '0 2px 8px rgba(0,0,0,.45)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
           });
           button.addEventListener('mouseenter', () => { button.style.background = 'rgba(50,50,50,.96)'; });
           button.addEventListener('mouseleave', () => { button.style.background = 'rgba(24,24,24,.92)'; });
@@ -489,6 +567,17 @@ class WindowManager {
     return { success: false, error: 'No active game session' };
   }
 
+  async openGameBattle(rawUrl) {
+    const url = normalizeBattleUrl(rawUrl);
+    if (!url) return { success: false, error: 'Invalid battle history URL' };
+    if (!this.gameWindow || this.gameWindow.isDestroyed()) return { success: false, error: 'No active game session' };
+    await this.gameWindow.loadURL(url);
+    await this.injectGameBrowserControls();
+    this.gameWindow.show();
+    this.gameWindow.focus();
+    return { success: true };
+  }
+
   hideGameWindow() {
     if (this.gameWindow && !this.gameWindow.isDestroyed()) {
       this.gameWindow.hide();
@@ -509,6 +598,115 @@ class WindowManager {
       return true;
     }
     return false;
+  }
+
+  async ensureCubePvpWatcher(accountName, rawUrl) {
+    const url = normalizeCubePvpMatchUrl(rawUrl);
+    if (!accountName || !url) throw new Error('Invalid Cube PvP watcher target');
+    if (this.cubePvpWatcher && !this.cubePvpWatcher.isDestroyed()
+      && this.cubePvpWatcherAccount === accountName && this.cubePvpWatcherUrl === url) return this.cubePvpWatcher;
+    this.destroyCubePvpWatcher();
+    const accountSession = session.fromPartition(`persist:veyra_${encodeURIComponent(accountName)}`);
+    accountSession.setUserAgent(USER_AGENT);
+    this.cubePvpWatcher = new BrowserWindow({
+      width: 1100, height: 760, show: false, title: `Veybot Cube PvP - [${accountName}]`,
+      webPreferences: {
+        session: accountSession, contextIsolation: true, nodeIntegration: false, sandbox: true,
+        backgroundThrottling: false,
+      },
+    });
+    this.cubePvpWatcherAccount = accountName;
+    this.cubePvpWatcherUrl = url;
+    this.cubePvpWatcher.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    this.cubePvpWatcher.webContents.on('will-navigate', (event, nextUrl) => {
+      if (normalizeCubePvpMatchUrl(nextUrl) !== this.cubePvpWatcherUrl) event.preventDefault();
+    });
+    this.cubePvpWatcher.on('closed', () => {
+      this.cubePvpWatcher = null;
+      this.cubePvpWatcherAccount = null;
+      this.cubePvpWatcherUrl = null;
+    });
+    await this.cubePvpWatcher.loadURL(url);
+    return this.cubePvpWatcher;
+  }
+
+  destroyCubePvpWatcher(accountName = null) {
+    if (accountName && this.cubePvpWatcherAccount !== accountName) return false;
+    const watcher = this.cubePvpWatcher;
+    this.cubePvpWatcher = null;
+    this.cubePvpWatcherAccount = null;
+    this.cubePvpWatcherUrl = null;
+    if (watcher && !watcher.isDestroyed()) {
+      watcher.destroy();
+      return true;
+    }
+    return false;
+  }
+
+  openCubePvpMatch(accountName, rawUrl) {
+    const url = normalizeCubePvpMatchUrl(rawUrl);
+    if (!url || this.cubePvpWatcherAccount !== accountName || !this.cubePvpWatcher || this.cubePvpWatcher.isDestroyed()) return false;
+    this.cubePvpWatcher.show();
+    this.cubePvpWatcher.focus();
+    return true;
+  }
+
+  async ensureMonsterPhasePvpWatcher(accountName, rawUrl) {
+    const url = normalizeMonsterPhasePvpUrl(rawUrl);
+    if (!accountName || !url) throw new Error('Invalid monster-phase PvP watcher target');
+    if (this.monsterPhasePvpWatcher && !this.monsterPhasePvpWatcher.isDestroyed()
+      && this.monsterPhasePvpWatcherAccount === accountName && this.monsterPhasePvpWatcherUrl === url) {
+      return this.monsterPhasePvpWatcher;
+    }
+    this.destroyMonsterPhasePvpWatcher();
+    const accountSession = session.fromPartition(`persist:veyra_${encodeURIComponent(accountName)}`);
+    accountSession.setUserAgent(USER_AGENT);
+    this.monsterPhasePvpWatcher = new BrowserWindow({
+      width: 1100, height: 760, show: false, title: `Veybot Monster Phase PvP - [${accountName}]`,
+      webPreferences: {
+        session: accountSession, contextIsolation: true, nodeIntegration: false, sandbox: true,
+        backgroundThrottling: false,
+      },
+    });
+    this.monsterPhasePvpWatcherAccount = accountName;
+    this.monsterPhasePvpWatcherUrl = url;
+    this.monsterPhasePvpWatcher.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    this.monsterPhasePvpWatcher.webContents.on('will-navigate', (event, nextUrl) => {
+      if (normalizeMonsterPhasePvpUrl(nextUrl) !== this.monsterPhasePvpWatcherUrl) event.preventDefault();
+    });
+    this.monsterPhasePvpWatcher.on('closed', () => {
+      this.monsterPhasePvpWatcher = null;
+      this.monsterPhasePvpWatcherAccount = null;
+      this.monsterPhasePvpWatcherUrl = null;
+    });
+    await this.monsterPhasePvpWatcher.loadURL(url);
+    return this.monsterPhasePvpWatcher;
+  }
+
+  destroyMonsterPhasePvpWatcher(accountName = null) {
+    if (accountName && this.monsterPhasePvpWatcherAccount !== accountName) return false;
+    const watcher = this.monsterPhasePvpWatcher;
+    this.monsterPhasePvpWatcher = null;
+    this.monsterPhasePvpWatcherAccount = null;
+    this.monsterPhasePvpWatcherUrl = null;
+    if (watcher && !watcher.isDestroyed()) {
+      watcher.destroy();
+      return true;
+    }
+    return false;
+  }
+
+  async purgeAccountStorage(accountName) {
+    if (!accountName) return false;
+    this.destroyGameWindow(accountName);
+    this.destroyCubePvpWatcher(accountName);
+    this.destroyMonsterPhasePvpWatcher(accountName);
+    const partitionName = `persist:veyra_${encodeURIComponent(accountName)}`;
+    const accountSession = session.fromPartition(partitionName);
+    await accountSession.clearCache();
+    await accountSession.clearStorageData();
+    accountSession.flushStorageData();
+    return true;
   }
 
   /**
@@ -543,4 +741,4 @@ class WindowManager {
   }
 }
 
-module.exports = { WindowManager };
+module.exports = { WindowManager, normalizeBattleUrl, normalizeCubePvpMatchUrl };

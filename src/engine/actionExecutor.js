@@ -1,10 +1,15 @@
-const MUTATING_ACTIONS = new Set(['JOIN', 'ATTACK', 'LOOT', 'CLAIM_LOOT', 'HEAL', 'FARM', 'APPLY_LOADOUT', 'USE_STAMINA_POTION', 'USE_MANA_POTION']);
-const KNOWN_ACTIONS = new Set([...MUTATING_ACTIONS, 'SCAN', 'WAIT']);
+const MUTATING_ACTIONS = new Set(['JOIN', 'ATTACK', 'LOOT', 'CLAIM_LOOT', 'CLAIM_OBJECTIVE_LOOT', 'ADV_QUEST_ACCEPT', 'ADV_QUEST_FINISH', 'ADV_QUEST_GIVE_UP', 'HEAL', 'FARM', 'APPLY_LOADOUT', 'USE_STAMINA_POTION', 'USE_MANA_POTION', 'AUTO_FARM_START', 'CUBE_PVP_JOIN', 'MONSTER_PHASE_DUEL']);
+const KNOWN_ACTIONS = new Set([...MUTATING_ACTIONS, 'SCAN', 'CUBE_SCAN', 'WAIT', 'STOP']);
 const ACTION_PARAM_VALIDATORS = Object.freeze({
   JOIN: () => true,
   LOOT: () => true,
   CLAIM_LOOT: params => params.claim && typeof params.claim === 'object'
     && params.claim.battleRef !== null && params.claim.battleRef !== undefined,
+  CLAIM_OBJECTIVE_LOOT: params => params.claim && typeof params.claim === 'object'
+    && params.claim.battleRef !== null && params.claim.battleRef !== undefined,
+  ADV_QUEST_ACCEPT: params => /^\d{1,12}$/.test(String(params.questId || '')),
+  ADV_QUEST_FINISH: params => /^\d{1,12}$/.test(String(params.questId || '')),
+  ADV_QUEST_GIVE_UP: params => /^\d{1,12}$/.test(String(params.questId || '')),
   WAIT: () => true,
   SCAN: params => typeof params.areaKey === 'string' && params.areaKey.length > 0
     && (params.kind === 'dungeon' || (
@@ -26,9 +31,20 @@ const ACTION_PARAM_VALIDATORS = Object.freeze({
   USE_STAMINA_POTION: params => ['small', 'large', 'full', 'adventure'].includes(params.type)
     && /^\d{1,30}$/.test(String(params.inventoryId ?? '')),
   USE_MANA_POTION: params => ['small', 'large'].includes(params.type)
+    && Number.isInteger(Number(params.quantity)) && Number(params.quantity) >= 1 && Number(params.quantity) <= 10
     && (/^\d{1,30}$/.test(String(params.inventoryId ?? '')) || params.buyIfMissing === true),
   FARM: params => typeof params.reactionType === 'string' && params.reactionType.length > 0
     && Number.isInteger(params.maxPerSession) && params.maxPerSession > 0,
+  // Auto Farm can resolve its read page from any configured supported map;
+  // one explicit areaKey is optional when the account has multiple targets.
+  AUTO_FARM_START: params => params && (params.areaKey === undefined || params.areaKey === null
+    || (typeof params.areaKey === 'string' && params.areaKey.length > 0)),
+  CUBE_SCAN: () => true,
+  CUBE_PVP_JOIN: params => ['instanceId', 'nodeId', 'matchNo', 'slotIndex']
+    .every(field => Number.isInteger(Number(params[field])) && Number(params[field]) > 0),
+  MONSTER_PHASE_DUEL: params => /^\d{1,30}$/.test(String(params.activeId || ''))
+    && typeof params.url === 'string' && params.url.length > 0,
+  STOP: () => true,
 });
 
 class ActionExecutor {

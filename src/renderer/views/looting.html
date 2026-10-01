@@ -1,0 +1,51 @@
+      <!-- SCREEN 5: Looting priority configuration -->
+      <section id="viewLootConfig" class="view-panel" style="display: none;">
+        <div class="subtabs-bar workspace-subtabs">
+          <button class="subtab-btn active" id="subtabLootingConfigBtn" type="button">Looting</button>
+          <button class="subtab-btn" id="subtabLootingHistoryBtn" type="button">Lootable</button>
+        </div>
+        <div id="subviewLootingConfig" class="workspace-subview">
+          <div class="panel-header-row">
+            <div>
+              <div class="panel-header">Looting</div>
+            </div>
+            <div class="workspace-area-toolbar">
+              <label for="lootAreaTypeSelect">Type</label>
+              <select id="lootAreaTypeSelect" class="workspace-area-type-select" aria-label="Looting area type">
+                <option value="gate">Gate</option>
+                <option value="dungeon">Dungeon</option>
+                <option value="event">Event</option>
+              </select>
+              <label for="lootAreaSelect">Area</label>
+              <select id="lootAreaSelect" class="workspace-area-select" aria-label="Looting area"></select>
+              <button id="btnRefreshLootArea" class="btn btn-primary btn-sm workspace-icon-btn" type="button"
+                title="Refresh looting" aria-label="Refresh looting"><i data-lucide="rotate-cw"></i></button>
+            </div>
+          </div>
+          <div id="lootAreaContent" class="monster-config-content loot-config-content">
+            <div class="empty-state">Choose a gate, dungeon, or event.</div>
+          </div>
+        </div>
+        <div id="subviewLootingHistory" class="workspace-subview" style="display: none;">
+          <div class="panel-header-row">
+            <div>
+              <div class="panel-header">Lootable monsters</div><span id="lootableHistoryStatus"
+                class="workspace-load-status" aria-live="polite"></span>
+            </div>
+            <div class="workspace-area-toolbar"><label for="lootableAreaTypeSelect">Type</label><select
+                id="lootableAreaTypeSelect" class="workspace-area-type-select">
+                <option value="gate">Gate</option>
+                <option value="dungeon">Dungeon</option>
+                <option value="event">Event</option>
+              </select><label for="lootableAreaSelect">Area</label><select id="lootableAreaSelect"
+                class="workspace-area-select"></select><button id="btnRefreshLootHistory"
+                class="btn btn-primary btn-sm workspace-icon-btn" type="button"
+                title="Recalculate lootable monsters now" aria-label="Recalculate lootable monsters now"><i
+                  data-lucide="rotate-cw"></i></button></div>
+          </div>
+          <div id="lootHistoryContent" class="monster-config-content activity-history-content">
+            <div class="empty-state">No readable loot has been scanned for this area.</div>
+          </div>
+        </div>
+      </section>
+

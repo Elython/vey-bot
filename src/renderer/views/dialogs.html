@@ -1,0 +1,136 @@
+      <!-- MODAL: Module information -->
+      <div id="modalModuleInfo" class="modal-overlay" style="display: none;">
+        <div class="modal-box module-info-modal" role="dialog" aria-modal="true" aria-labelledby="moduleInfoTitle">
+          <div class="modal-header">
+            <h3 id="moduleInfoTitle">Module information</h3>
+            <button id="btnCloseModuleInfo" class="close-btn" type="button" aria-label="Close module information"><i
+                data-lucide="x"></i></button>
+          </div>
+          <div id="moduleInfoBody" class="module-info-body"></div>
+        </div>
+      </div>
+
+      <!-- MODAL: Gear / Pet set information -->
+      <div id="modalLoadoutInfo" class="modal-overlay" style="display: none;">
+        <div class="modal-box loadout-info-modal" role="dialog" aria-modal="true" aria-labelledby="loadoutInfoTitle">
+          <div class="modal-header">
+            <h3 id="loadoutInfoTitle">Set information</h3>
+            <button id="btnCloseLoadoutInfo" cla="close-btn" type="button" aria-label="Close set information"><i
+                data-lucide="x"></i></button>
+          </div>
+          <div id="loadoutInfoSummary" class="loadout-info-summary"></div>
+          <div id="loadoutInfoContent" class="loadout-info-content"></div>
+        </div>
+      </div>
+
+      <!-- MODAL: Gate/Event catalog manager -->
+      <div id="modalGates" class="modal-overlay" style="display: none;">
+        <div class="modal-box gates-manager-modal" role="dialog" aria-modal="true" aria-labelledby="gatesManagerTitle">
+          <div class="modal-header">
+            <h3 id="gatesManagerTitle">Gates</h3><button id="btnCloseGates" class="close-btn" type="button"
+              aria-label="Close Gates manager"><i data-lucide="x"></i></button>
+          </div>
+          <div class="gates-add-row">
+            <select id="selectNewAreaType" class="tree-select" aria-label="New area type">
+              <option value="gate">Gate</option>
+              <option value="event">Event</option>
+            </select>
+            <input id="inputNewAreaName" class="tree-input-sm" type="text" maxlength="100" placeholder="Name">
+            <input id="inputNewAreaId" class="tree-input-sm" type="number" min="1" placeholder="Gate/Event ID">
+            <input id="inputNewAreaWave" class="tree-input-sm" type="number" min="1" placeholder="Wave">
+            <button id="btnAddGateArea" class="btn btn-primary btn-sm" type="button">Add</button>
+          </div>
+          <div id="gatesManagerContent" class="gates-manager-content"></div>
+        </div>
+      </div>
+
+      <!-- MODAL: Account activity history cleanup -->
+      <div id="modalClearHistory" class="modal-overlay" style="display: none;">
+        <div class="modal-box clear-history-modal" role="dialog" aria-modal="true" aria-labelledby="clearHistoryTitle">
+          <div class="modal-header">
+            <h3 id="clearHistoryTitle">Clear History</h3><button id="btnCloseClearHistory" class="close-btn"
+              type="button" aria-label="Close Clear History"><i data-lucide="x"></i></button>
+          </div>
+          <div class="clear-history-form">
+            <span class="clear-history-label">History</span>
+            <label><input id="chkClearAttackHistory" class="tree-checkbox" type="checkbox" checked> Attacking</label>
+            <label><input id="chkClearLootHistory" class="tree-checkbox" type="checkbox" checked> Looting</label>
+            <span class="clear-history-label">Range</span>
+            <label><input id="radioClearHistoryAll" name="clearHistoryRange" type="radio" checked> Everything</label>
+            <label><input id="radioClearHistoryBefore" name="clearHistoryRange" type="radio"> Older than</label>
+            <input id="inputClearHistoryBefore" class="tree-input-sm" type="date" disabled>
+          </div>
+          <div id="clearHistoryStatus" class="modal-status" aria-live="polite"></div>
+          <div class="modal-actions">
+            <button id="btnCancelClearHistory" class="btn btn-sm" type="button">Cancel</button>
+            <button id="btnConfirmClearHistory" class="btn btn-danger btn-sm" type="button"><i
+                data-lucide="trash-2"></i> Clear</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: Purge all data associated with the signed-in account -->
+      <div id="modalPurge" class="modal-overlay" style="display: none;">
+        <div class="modal-box purge-modal" role="dialog" aria-modal="true" aria-labelledby="purgeTitle">
+          <div class="modal-header">
+            <h3 id="purgeTitle">Purge Account Data</h3><button id="btnClosePurge" class="close-btn" type="button"
+              aria-label="Close Purge dialog"><i data-lucide="x"></i></button>
+          </div>
+          <p class="purge-warning">This permanently removes the signed-in account's saved session, credentials,
+            browser storage, histories, learned damage and XP observations, loot cache, chapter-farming data, and
+            logs from this device. The account will be signed out.</p>
+          <div id="purgeAccountName" class="purge-account-name"></div>
+          <div id="purgeStatus" class="modal-status" aria-live="polite"></div>
+          <div class="modal-actions">
+            <button id="btnCancelPurge" class="btn btn-sm" type="button">Cancel</button>
+            <button id="btnConfirmPurge" class="btn btn-danger btn-sm" type="button" disabled><i
+                data-lucide="trash-2"></i> Purge in 5s</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: Saved Accounts Manager -->
+      <div id="modalSavedAccounts" class="modal-overlay" style="display: none;">
+        <div class="modal-box">
+          <div class="modal-header">
+            <h3>Saved Accounts</h3>
+            <button id="btnCloseModal" class="close-btn"><i data-lucide="x"></i></button>
+          </div>
+          <div id="modalAccountsList" class="accounts-list"></div>
+        </div>
+      </div>
+
+      <!-- MODAL: Monster stats -->
+      <div id="modalMonsterStats" class="modal-overlay" style="display: none;">
+        <div class="modal-box monster-stats-modal" role="dialog" aria-modal="true" aria-labelledby="monsterStatsTitle">
+          <div class="modal-header">
+            <div>
+              <h3 id="monsterStatsTitle">Monster Stats</h3>
+              <div id="monsterStatsStatus" class="monster-stats-status"></div>
+            </div>
+            <button id="btnCloseMonsterStats" class="close-btn" type="button" aria-label="Close Monster Stats"><i
+                data-lucide="x"></i></button>
+          </div>
+          <div id="monsterStatsContent"></div>
+          <div class="monster-stats-actions">
+            <button id="btnApplyMonsterStats" type="button" class="btn btn-primary btn-sm" style="display: none;"><i
+                data-lucide="check"></i> Apply new stats</button>
+            <button id="btnRefreshMonsterStats" type="button" class="btn btn-sm"><i data-lucide="rotate-cw"></i> Refresh
+              stats</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: Rewards captured from a successful loot response -->
+      <div id="modalLootRewards" class="modal-overlay" style="display: none;">
+        <div class="modal-box loot-rewards-modal" role="dialog" aria-modal="true" aria-labelledby="lootRewardsTitle">
+          <div class="modal-header">
+            <h3 id="lootRewardsTitle">Loot Rewards</h3>
+            <button id="btnCloseLootRewards" class="close-btn" type="button" aria-label="Close Loot Rewards"><i data-lucide="x"></i></button>
+          </div>
+          <div id="lootRewardsSummary" class="loot-rewards-summary"></div>
+          <div id="lootRewardsContent" class="loot-rewards-content"></div>
+        </div>
+      </div>
+
+    </main>

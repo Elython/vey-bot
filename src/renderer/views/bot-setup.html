@@ -1,0 +1,160 @@
+        <div class="subtabs-bar home-subtabs" id="homeSetupTabs">
+          <button class="subtab-btn active" id="subtabHomeGeneralBtn" data-home-tab="general">General</button>
+          <button class="subtab-btn" id="subtabHomeBotBtn" data-home-tab="bot">Advanced</button>
+        </div>
+
+        <div id="subviewHomeGeneral" class="subview-panel home-config-panel">
+          <div class="tree-form-container">
+            <div class="form-tree-row">
+              <label class="form-tree-label" for="selectGeneralModule">Module</label>
+              <div class="form-tree-control inline-control-with-button"><select id="selectGeneralModule"
+                  class="tree-select">
+                  <option value="gates">Gates</option>
+                  <option value="dungeons">Dungeons</option>
+                  <option value="event">Event</option>
+                  <option value="auto_farm">Auto Farm</option>
+                  <option value="battle_pass">Battle Pass</option>
+                  <option value="adventure_quests">Adv Quests</option>
+                  <option value="idle" selected>Idle</option>
+                </select><button id="btnModuleInfo" class="icon-info-btn" type="button"
+                  title="What does this module do?" aria-label="Describe selected module"><i
+                    data-lucide="circle-help"></i></button></div>
+            </div>
+            <div class="form-tree-row">
+              <label class="form-tree-label" for="selectProgressionProfileSetup">Progression config</label>
+              <div class="form-tree-control"><select id="selectProgressionProfileSetup" class="tree-select">
+                  <option value="default">Default</option>
+                </select></div>
+            </div>
+            <div class="form-tree-row" id="rowGeneralMap">
+              <label class="form-tree-label" for="selectGeneralMap">Gate</label>
+              <div class="form-tree-control"><select id="selectGeneralMap" class="tree-select">
+                  <option value="">-</option>
+                </select></div>
+            </div>
+            <div class="form-tree-row" id="rowGeneralDungeonMap">
+              <label class="form-tree-label" for="selectGeneralDungeonMap">Dungeon</label>
+              <div class="form-tree-control"><select id="selectGeneralDungeonMap" class="tree-select"></select></div>
+            </div>
+            <div class="form-tree-row" id="rowGeneralGateMap">
+              <label class="form-tree-label" for="selectGeneralGateMap">Gate fallback</label>
+              <div class="form-tree-control"><select id="selectGeneralGateMap" class="tree-select"></select></div>
+            </div>
+            <div class="form-tree-row" id="rowGeneralEventMap">
+              <label class="form-tree-label" for="selectGeneralEventMap">Event</label>
+              <div class="form-tree-control"><select id="selectGeneralEventMap" class="tree-select"></select></div>
+            </div>
+            <div class="tree-section" id="sectionGeneralStamina">
+              <div class="tree-section-header" data-tree-section="sectionGeneralStamina">
+                <i class="tree-arrow" data-lucide="chevron-down" aria-hidden="true"></i><span
+                  class="tree-section-title">Stamina</span>
+              </div>
+              <div class="tree-section-content">
+                <div class="form-tree-row"><label class="form-tree-label">Keep stamina in range</label>
+                  <div class="form-tree-control range-control"><input id="inputKeepStaminaMin" type="number"
+                      class="tree-input-sm" min="0" max="100"><span>%</span><span>–</span><input
+                      id="inputKeepStaminaMax" type="number" class="tree-input-sm" min="0" max="100"><span>%</span>
+                  </div>
+                </div>
+                <div class="form-tree-row"><label class="form-tree-label" for="inputStopStaminaBelow">Stop if stamina is
+                    lower than</label>
+                  <div class="form-tree-control input-unit-group"><input id="inputStopStaminaBelow" type="number"
+                      class="tree-input-sm" min="0" max="100"><span class="unit-label">%</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="tree-section" id="sectionGeneralHealth">
+              <div class="tree-section-header" data-tree-section="sectionGeneralHealth">
+                <i class="tree-arrow" data-lucide="chevron-down" aria-hidden="true"></i><span
+                  class="tree-section-title">Health</span>
+              </div>
+              <div class="tree-section-content">
+                <div class="form-tree-row"><label class="form-tree-label" for="inputSleepHealthBelow">Sleep when Health
+                    lower</label>
+                  <div class="form-tree-control input-unit-group"><input id="inputSleepHealthBelow" type="number"
+                      class="tree-input-sm" min="0" max="100"><span class="unit-label">%</span></div>
+                </div>
+                <div class="form-tree-row"><label class="form-tree-label" for="inputMaxDeaths">Max Deaths</label>
+                  <div class="form-tree-control"><input id="inputMaxDeaths" type="number" class="tree-input-sm" min="0">
+                  </div>
+                </div>
+                <div class="form-tree-row"><label class="form-tree-label" for="chkUseHealingPotions">Use Healing
+                    Potions</label>
+                  <div class="form-tree-control"><input id="chkUseHealingPotions" type="checkbox" class="tree-checkbox">
+                  </div>
+                </div>
+                <div class="form-tree-row"><label class="form-tree-label" for="inputMaxHealingPotions">Max Healing
+                    Potions</label>
+                  <div class="form-tree-control"><input id="inputMaxHealingPotions" type="number" class="tree-input-sm"
+                      min="0"></div>
+                </div>
+                <div class="form-tree-row"><label class="form-tree-label" for="chkBuyHealthPotion">Buy Health pot if
+                    needed (30k gold)</label>
+                  <div class="form-tree-control"><input id="chkBuyHealthPotion" type="checkbox" class="tree-checkbox">
+                  </div>
+                </div>
+                <div class="form-tree-row resource-child-row"><label class="form-tree-label"
+                    for="inputMaxHealthPotionPurchases">Buy limit</label>
+                  <div class="form-tree-control"><input id="inputMaxHealthPotionPurchases" type="number"
+                      class="tree-input-sm" min="0"></div>
+                </div>
+                <div class="form-tree-row resource-child-row"><span class="form-tree-label">Bought by bot</span>
+                  <div class="form-tree-control resource-counter"><strong
+                      id="healthPotsPurchasedCount">0</strong><span>pots</span><button id="btnResetHealthPurchases"
+                      type="button" class="compact-reset-btn">Reset</button></div>
+                </div>
+              </div>
+            </div>
+            <div class="tree-section" id="sectionGeneralMana">
+              <div class="tree-section-header" data-tree-section="sectionGeneralMana">
+                <i class="tree-arrow" data-lucide="chevron-down" aria-hidden="true"></i><span
+                  class="tree-section-title">Mana</span>
+              </div>
+              <div class="tree-section-content">
+                <div class="form-tree-row"><label class="form-tree-label" for="chkAllowManaPotions">Allow mana
+                    pots</label>
+                  <div class="form-tree-control"><input id="chkAllowManaPotions" type="checkbox" class="tree-checkbox">
+                  </div>
+                </div>
+                <div id="rowManaPotionPriority" class="form-tree-row resource-child-row"><label class="form-tree-label"
+                    for="selectManaPotionPriority">Prioritize</label>
+                  <div class="form-tree-control"><select id="selectManaPotionPriority"
+                      class="tree-select compact-resource-select">
+                      <option value="small">Small pot</option>
+                      <option value="large">Large pot</option>
+                    </select></div>
+                </div>
+                <div class="form-tree-row resource-child-row"><label class="form-tree-label"
+                    for="inputSmallManaPotLimit">Small pots limit</label>
+                  <div class="form-tree-control"><input id="inputSmallManaPotLimit" type="number" class="tree-input-sm"
+                      min="0"></div>
+                </div>
+                <div class="form-tree-row resource-child-row"><label class="form-tree-label"
+                    for="inputLargeManaPotLimit">Large pots limit</label>
+                  <div class="form-tree-control"><input id="inputLargeManaPotLimit" type="number" class="tree-input-sm"
+                      min="0"></div>
+                </div>
+                <div class="form-tree-row"><label class="form-tree-label">Keep mana in range</label>
+                  <div class="form-tree-control range-control"><input id="inputKeepManaMin" type="number"
+                      class="tree-input-sm" min="0" step="20"><span>–</span><input id="inputKeepManaMax"
+                      type="number" class="tree-input-sm" min="0" step="20"><span class="unit-label">Mana</span></div>
+                </div>
+                <div class="form-tree-row"><label class="form-tree-label" for="chkBuyManaPotion">Buy Mana pot if needed
+                    (60k gold)</label>
+                  <div class="form-tree-control"><input id="chkBuyManaPotion" type="checkbox" class="tree-checkbox">
+                  </div>
+                </div>
+                <div class="form-tree-row resource-child-row"><label class="form-tree-label"
+                    for="inputMaxManaPotionPurchases">Buy limit</label>
+                  <div class="form-tree-control"><input id="inputMaxManaPotionPurchases" type="number"
+                      class="tree-input-sm" min="0"></div>
+                </div>
+                <div class="form-tree-row resource-child-row"><span class="form-tree-label">Bought by bot</span>
+                  <div class="form-tree-control resource-counter"><strong
+                      id="manaPotsPurchasedCount">0</strong><span>pots</span><button id="btnResetManaPurchases"
+                      type="button" class="compact-reset-btn">Reset</button></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>

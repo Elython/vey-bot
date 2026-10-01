@@ -18,6 +18,7 @@ const { Logger } = require('../main/logger');
 const {
   parseGates,
   parseWaveMonsters,
+  parseAutoSummonMonsterNames,
   parseWaveLootSummary,
   parseWaveDeadPageNumbers,
   parseWavePlayerResources,
@@ -30,9 +31,43 @@ const {
   parseDungeonLocationPage,
   parseStatsPage,
   parseTopbar,
+  parseAutoFarmPanel,
+  parseCubeHomePage,
+  parseCubePvpNodePage,
+  parseCubePvpState,
+  parseAdventurerQuests,
+  parseBattlePass,
 } = require('./gameParsers');
+const { CUBE_PVP_NODES, CUBE_PVE_LOCATION_IDS } = require('./cubeCatalog');
 
 const BASE_URL = 'https://demonicscans.org';
+
+function isWaveAccessDenied(text) {
+  return /\byou\s+can(?:not|['’]?t)\s+access\s+this\s+wave\s+yet\b/i.test(String(text || ''));
+}
+
+function isNoGuildResponse(response = {}) {
+  try {
+    const finalUrl = new URL(String(response.url || ''), BASE_URL);
+    if (finalUrl.origin === BASE_URL && finalUrl.pathname === '/guild_join_create.php') return true;
+  } catch {
+    // The verified HTTP status/body contract below can still classify the response.
+  }
+
+  // A valid Guild Dungeons page can contain the global Guild Chat placeholder
+  // "You are not in a guild yet" even while its dungeon directory is usable.
+  // Only the captured 403 response makes that body text authoritative.
+  return Number(response.status) === 403
+    && /\byou\s+are\s+not\s+in\s+a\s+guild\b/i.test(String(response.text || ''));
+}
+
+function normalizedMonsterName(value) {
+  return String(value || '')
+    .normalize('NFKD')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
 
 class GameAPI {
   /**
@@ -65,6 +100,54 @@ class GameAPI {
 
     Logger.logClient(this.accountName, `[GameAPI] Found ${gates.length} gates`);
     return gates;
+  }
+
+  async getAdventurerQuests() {
+    const url = `${BASE_URL}/adventurers_guild.php`;
+    const resp = await this.http.get(url);
+    if (!resp.ok) throw new GameAPIError(`Failed to fetch Adventurer quests: HTTP ${resp.status}`, 'ADV_QUESTS_FETCH_FAILED');
+    const parsed = parseAdventurerQuests(resp.text);
+    if (!parsed.recognized) throw new GameAPIError('Adventurer Guild page loaded but the quest board was not recognized', 'ADV_QUESTS_PARSE_FAILED');
+    return parsed;
+  }
+
+  async acceptAdventurerQuest(questId) {
+    const id = this._requireNumericId(questId, 'Quest ID');
+    const url = `${BASE_URL}/adventurers_accept_quest.php`;
+    const resp = await this.http.post(url, new URLSearchParams({ quest_id: id }), { retries: 0 });
+    const data = this._parseJsonSafe(resp.text);
+    const success = data?.status === 'ok';
+    Logger.logApi(this.accountName, 'POST', url, resp.status, success ? `Quest ${id} accepted` : String(data?.message || 'Invalid response').slice(0, 200));
+    return { success, status: data?.status || 'error', message: data?.message || 'Invalid quest response' };
+  }
+
+  async finishAdventurerQuest(questId) {
+    const id = this._requireNumericId(questId, 'Quest ID');
+    const url = `${BASE_URL}/adventurers_finish_quest.php`;
+    const resp = await this.http.post(url, new URLSearchParams({ quest_id: id }), { retries: 0 });
+    const data = this._parseJsonSafe(resp.text);
+    const success = data?.status === 'ok';
+    Logger.logApi(this.accountName, 'POST', url, resp.status, success ? `Quest ${id} finished` : String(data?.message || 'Invalid response').slice(0, 200));
+    return { success, status: data?.status || 'error', message: data?.message || 'Invalid quest response' };
+  }
+
+  async giveUpAdventurerQuest(questId) {
+    const id = this._requireNumericId(questId, 'Quest ID');
+    const url = `${BASE_URL}/adventurers_giveup_quest.php`;
+    const resp = await this.http.post(url, new URLSearchParams({ quest_id: id }), { retries: 0 });
+    const data = this._parseJsonSafe(resp.text);
+    const success = data?.status === 'ok';
+    Logger.logApi(this.accountName, 'POST', url, resp.status, success ? `Quest ${id} abandoned` : String(data?.message || 'Invalid response').slice(0, 200));
+    return { success, status: data?.status || 'error', message: data?.message || 'Invalid quest response' };
+  }
+
+  async getBattlePass() {
+    const url = `${BASE_URL}/battle_pass.php`;
+    const resp = await this.http.get(url);
+    if (!resp.ok) throw new GameAPIError(`Failed to fetch Battle Pass: HTTP ${resp.status}`, 'BATTLE_PASS_FETCH_FAILED');
+    const parsed = parseBattlePass(resp.text);
+    if (!parsed.recognized) throw new GameAPIError('Battle Pass page loaded but its daily objectives were not recognized', 'BATTLE_PASS_PARSE_FAILED');
+    return parsed;
   }
 
   /**
@@ -125,21 +208,22 @@ class GameAPI {
     for (const monster of first.loot.monsters || []) rememberLoot(monster);
 
     while (queued.size > 0) {
-      const batch = [...queued].filter(page => !visited.has(page)).slice(0, 100);
-      for (const page of batch) queued.delete(page);
-      if (batch.length === 0) break;
-      const snapshots = await Promise.all(batch.map(page =>
-        this._fetchWaveSnapshot(routeId, waveNum, cookieOverrides, routeType, page)));
-      for (let index = 0; index < snapshots.length; index += 1) {
-        const snapshot = snapshots[index];
-        visited.add(batch[index]);
-        if (snapshot.loot.recognized !== true) {
-          throw new GameAPIError(`Dead-monster page ${batch[index]} was not recognized`, 'WAVE_PAGINATION_FAILED');
-        }
-        for (const monster of snapshot.loot.monsters || []) rememberLoot(monster);
-        for (const page of snapshot.deadPages || []) {
-          if (!visited.has(page)) queued.add(page);
-        }
+      // Dead-monster pages can be hundreds of kilobytes each. Reading up to
+      // 100 concurrently caused large transient allocations and could retain
+      // an entire scan when one response stalled. Keep this deliberately
+      // sequential: background discovery is lower priority than combat and a
+      // single parsed page is released before the next one is requested.
+      const page = [...queued].find(candidate => !visited.has(candidate));
+      queued.delete(page);
+      if (!page) break;
+      const snapshot = await this._fetchWaveSnapshot(routeId, waveNum, cookieOverrides, routeType, page);
+      visited.add(page);
+      if (snapshot.loot.recognized !== true) {
+        throw new GameAPIError(`Dead-monster page ${page} was not recognized`, 'WAVE_PAGINATION_FAILED');
+      }
+      for (const monster of snapshot.loot.monsters || []) rememberLoot(monster);
+      for (const discoveredPage of snapshot.deadPages || []) {
+        if (!visited.has(discoveredPage)) queued.add(discoveredPage);
       }
       if (visited.size > 1000) {
         throw new GameAPIError('Dead-monster pagination exceeded its safety limit', 'WAVE_PAGINATION_FAILED');
@@ -164,18 +248,40 @@ class GameAPI {
     const pageSuffix = deadPage > 1 ? `&dead_page=${deadPage}` : '';
     const url = `${BASE_URL}/active_wave.php?${routeKey}=${routeId}&wave=${waveNum}${pageSuffix}`;
     const resp = cookieOverrides && typeof this.http.getWithCookieOverrides === 'function'
-      ? await this.http.getWithCookieOverrides(url, cookieOverrides)
-      : await this.http.get(url);
+      ? await this.http.getWithCookieOverrides(url, cookieOverrides, { noRetryStatuses: [503] })
+      : await this.http.get(url, { noRetryStatuses: [503] });
     if (!resp.ok) {
-      throw new GameAPIError(`Failed to fetch wave: HTTP ${resp.status}`, 'WAVE_FETCH_FAILED');
+      if (resp.status === 503) {
+        throw new GameAPIError('Wave is not currently available to this account (HTTP 503)', 'AREA_UNAVAILABLE', resp.status);
+      }
+      throw new GameAPIError(`Failed to fetch wave: HTTP ${resp.status}`, 'WAVE_FETCH_FAILED', resp.status);
+    }
+
+    if (isWaveAccessDenied(resp.text)) {
+      throw new GameAPIError('Wave is not currently available to this account', 'AREA_UNAVAILABLE', resp.status);
     }
 
     const monsters = this._parseMonsterCards(resp.text);
+    const parsedAutoSummonNames = parseAutoSummonMonsterNames(resp.text);
+    const autoSummonNames = new Set(parsedAutoSummonNames.map(normalizedMonsterName));
+    for (const monster of monsters) {
+      if (monster.boss === true) monster.bossEvidence = 'server';
+      else if (autoSummonNames.has(normalizedMonsterName(monster.name))) {
+        monster.boss = true;
+        monster.bossEvidence = 'auto_summon';
+      }
+    }
     const loot = parseWaveLootSummary(resp.text);
+    if (loot.recognized !== true) {
+      throw new GameAPIError('Wave page loaded but its verified structure was missing', 'WAVE_PARSE_FAILED', resp.status);
+    }
+    const autoFarm = parseAutoFarmPanel(resp.text);
     return {
       monsters,
       deadPages: parseWaveDeadPageNumbers(resp.text),
       resources: parseWavePlayerResources(resp.text),
+      autoSummonBossNames: parsedAutoSummonNames,
+      autoFarmAvailableMonsters: autoFarm.recognized ? autoFarm.availableMonsters : [],
       loot: {
         recognized: loot.recognized,
         reportedUnclaimed: loot.reportedUnclaimed,
@@ -188,9 +294,15 @@ class GameAPI {
 
   async fetchPlayerResources(gateId = 3, waveNum = 5) {
     const url = `${BASE_URL}/active_wave.php?gate=${gateId}&wave=${waveNum}`;
-    const resp = await this.http.get(url);
+    const resp = await this.http.get(url, { noRetryStatuses: [503] });
     if (!resp.ok) {
+      if (resp.status === 503) {
+        throw new GameAPIError('Player resource wave is not available to this account (HTTP 503)', 'AREA_UNAVAILABLE', resp.status);
+      }
       throw new GameAPIError(`Failed to fetch player resources: HTTP ${resp.status}`, 'PLAYER_RESOURCES_FETCH_FAILED');
+    }
+    if (isWaveAccessDenied(resp.text)) {
+      throw new GameAPIError('Player resource wave is not available to this account', 'AREA_UNAVAILABLE', resp.status);
     }
     const resources = parseWavePlayerResources(resp.text);
     if (!resources.hp && !resources.mp) {
@@ -220,8 +332,16 @@ class GameAPI {
     return (await this.getDungeonInstances()).filter(dungeon => dungeon.active);
   }
 
-  async getDungeonInstances() {
-    const resp = await this.http.get(`${BASE_URL}/guild_dungeon.php`);
+  async getDungeonDirectory() {
+    const resp = await this.http.get(`${BASE_URL}/guild_dungeon.php`, { noRetryStatuses: [403] });
+    if (isNoGuildResponse(resp)) {
+      return {
+        recognized: true,
+        guildMember: false,
+        reason: 'not_in_guild',
+        instances: [],
+      };
+    }
     if (!resp.ok) {
       throw new GameAPIError(`Failed to fetch Guild Dungeons: HTTP ${resp.status}`, 'DUNGEON_INDEX_FETCH_FAILED');
     }
@@ -229,7 +349,150 @@ class GameAPI {
     if (!parsed.recognized) {
       throw new GameAPIError('Guild Dungeons loaded but verified instance cards were missing', 'DUNGEON_INDEX_PARSE_FAILED');
     }
-    return parsed.instances;
+    return {
+      recognized: true,
+      guildMember: true,
+      reason: null,
+      instances: parsed.instances,
+    };
+  }
+
+  async getDungeonInstances() {
+    return (await this.getDungeonDirectory()).instances;
+  }
+
+  async getCubeHome({ directoryInstances = null } = {}) {
+    const directory = Array.isArray(directoryInstances)
+      ? directoryInstances
+      : await this.getDungeonInstances();
+    const cubes = directory
+      .filter(entry => /polyhedral crucible/i.test(String(entry.name || '')))
+      .sort((left, right) => Number(right.instanceId) - Number(left.instanceId));
+    const cube = cubes.find(entry => entry.active) || cubes[0];
+    if (!cube?.url) throw new GameAPIError('The Polyhedral Crucible is not available', 'CUBE_UNAVAILABLE');
+    const url = new URL(cube.url, BASE_URL);
+    if (url.origin !== BASE_URL) throw new GameAPIError('Cube link was not same-origin', 'CUBE_INVALID_URL');
+    const resp = await this.http.get(url.toString());
+    if (!resp.ok) throw new GameAPIError(`Failed to fetch Cube: HTTP ${resp.status}`, 'CUBE_FETCH_FAILED');
+    const parsed = parseCubeHomePage(resp.text);
+    if (!parsed.recognized) throw new GameAPIError('Cube loaded but its STATE document was missing', 'CUBE_PARSE_FAILED');
+    parsed.instanceId ||= Number(cube.instanceId) || null;
+    parsed.url = url.toString();
+    return parsed;
+  }
+
+  async enterCubeNode(instanceId, node) {
+    if (!/^\d+$/.test(String(instanceId || '')) || !/^\d+$/.test(String(node?.id || '')) || !/^[a-z_]{1,40}$/i.test(String(node?.faceKey || ''))) {
+      throw new GameAPIError('Invalid Cube node locator', 'INVALID_CUBE_NODE');
+    }
+    const resp = await this.http.postMultipart(`${BASE_URL}/guild_dungeon_cube_action.php`, {
+      action: 'enter_node',
+      instance_id: instanceId,
+      node_id: node.id,
+      face_key: node.faceKey,
+    }, { retries: 1 });
+    if (!resp.ok) throw new GameAPIError(`Cube node entry failed: HTTP ${resp.status}`, 'CUBE_NODE_FAILED');
+    let result;
+    try { result = JSON.parse(resp.text); } catch { throw new GameAPIError('Cube node returned invalid JSON', 'CUBE_NODE_PARSE_FAILED'); }
+    if (result.ok !== true || typeof result.redirect !== 'string') {
+      throw new GameAPIError(String(result.message || 'Cube node entry was rejected'), 'CUBE_NODE_REJECTED');
+    }
+    const redirect = new URL(result.redirect, BASE_URL);
+    if (redirect.origin !== BASE_URL) throw new GameAPIError('Cube redirect was not same-origin', 'CUBE_INVALID_REDIRECT');
+    return { success: true, redirect: redirect.toString() };
+  }
+
+  async getCubePveLocation(instanceId, node) {
+    if (!/^\d+$/.test(String(instanceId || '')) || !/^\d+$/.test(String(node?.linkedLocationId || ''))) {
+      throw new GameAPIError('Cube PvE node has no verified location', 'INVALID_CUBE_PVE_NODE');
+    }
+    const url = `${BASE_URL}/guild_dungeon_location.php?instance_id=${encodeURIComponent(instanceId)}&location_id=${encodeURIComponent(node.linkedLocationId)}`;
+    const resp = await this.http.get(url);
+    if (!resp.ok) throw new GameAPIError(`Cube PvE location failed: HTTP ${resp.status}`, 'CUBE_PVE_FETCH_FAILED');
+    if (/That route is still sealed\./i.test(resp.text)) {
+      throw new GameAPIError('That route is still sealed.', 'CUBE_PVE_NODE_SEALED');
+    }
+    const parsed = parseDungeonLocationPage(resp.text, {
+      dungeonName: 'The Polyhedral Crucible', instanceId: Number(instanceId),
+      locationId: Number(node.linkedLocationId), locationName: node.name, boss: node.type === 'boss',
+    });
+    if (!parsed.recognized) throw new GameAPIError('Cube PvE location markup was not recognized', 'CUBE_PVE_PARSE_FAILED');
+    return parsed;
+  }
+
+  async getCubeSnapshot({ includeCleared = false, directoryInstances = null } = {}) {
+    const cube = await this.getCubeHome({ directoryInstances });
+    const allowedLocations = new Set(CUBE_PVE_LOCATION_IDS);
+    const nodes = cube.nodes.filter(node => ['pve', 'boss'].includes(node.type)
+      && (['available', 'in_progress'].includes(node.status) || (includeCleared && node.status === 'cleared'))
+      && allowedLocations.has(Number(node.linkedLocationId)));
+    const locations = [];
+    const errors = [];
+    for (const node of nodes) {
+      try {
+        locations.push(await this.getCubePveLocation(cube.instanceId, node));
+      } catch (error) {
+        errors.push({ nodeId: node.id, message: error.message });
+      }
+    }
+    return {
+      sourceAvailable: true,
+      dungeon: { name: 'The Polyhedral Crucible', instanceId: cube.instanceId, active: true, cube: true },
+      cube,
+      locations: locations.map(({ monsters, ...location }) => location),
+      monsters: locations.flatMap(location => location.monsters),
+      resources: locations.find(location => location.resources?.hp)?.resources || {},
+      errors,
+      message: locations.length === 0 ? 'No accessible Cube PvE nodes are available.' : '',
+    };
+  }
+
+  async getCubePvpNode(instanceId, nodeId) {
+    if (!/^\d+$/.test(String(instanceId || '')) || !CUBE_PVP_NODES.some(node => node.id === Number(nodeId))) {
+      throw new GameAPIError('Invalid Cube PvP node locator', 'INVALID_CUBE_PVP_NODE');
+    }
+    const url = `${BASE_URL}/pvp_style_node.php?source=cube&instance_id=${encodeURIComponent(instanceId)}&node_id=${encodeURIComponent(nodeId)}`;
+    const resp = await this.http.get(url);
+    if (!resp.ok) throw new GameAPIError(`Cube PvP node failed: HTTP ${resp.status}`, 'CUBE_PVP_NODE_FETCH_FAILED');
+    if (/PvP-style node not found\./i.test(resp.text)) {
+      throw new GameAPIError('PvP-style node not found.', 'CUBE_PVP_NODE_SEALED');
+    }
+    const parsed = parseCubePvpNodePage(resp.text, { instanceId, nodeId });
+    if (!parsed.recognized) throw new GameAPIError('Cube PvP node markup was not recognized', 'CUBE_PVP_NODE_PARSE_FAILED');
+    return parsed;
+  }
+
+  async joinCubePvpSlot(locator) {
+    for (const field of ['instanceId', 'nodeId', 'matchNo', 'slotIndex']) {
+      if (!/^\d+$/.test(String(locator?.[field] || ''))) throw new GameAPIError('Invalid Cube PvP slot locator', 'INVALID_CUBE_PVP_SLOT');
+    }
+    const resp = await this.http.post(`${BASE_URL}/pvp_style_action.php`, {
+      source: 'cube', action: 'pick_slot', instance_id: locator.instanceId,
+      node_id: locator.nodeId, match_no: locator.matchNo, slot_index: locator.slotIndex,
+    }, { retries: 1 });
+    if (!resp.ok) throw new GameAPIError(`Cube PvP join failed: HTTP ${resp.status}`, 'CUBE_PVP_JOIN_FAILED');
+    let result;
+    try { result = JSON.parse(resp.text); } catch { throw new GameAPIError('Cube PvP join returned invalid JSON', 'CUBE_PVP_JOIN_PARSE_FAILED'); }
+    return { success: result.ok === true, message: String(result.message || ''), result };
+  }
+
+  async getCubePvpState(locator, sinceLogId = 0) {
+    const url = `${BASE_URL}/pvp_style_state.php?source=cube&since_log_id=${encodeURIComponent(Math.max(0, Number(sinceLogId) || 0))}&instance_id=${encodeURIComponent(locator.instanceId)}&node_id=${encodeURIComponent(locator.nodeId)}&match_no=${encodeURIComponent(locator.matchNo)}`;
+    const resp = await this.http.get(url);
+    if (!resp.ok) throw new GameAPIError(`Cube PvP state failed: HTTP ${resp.status}`, 'CUBE_PVP_STATE_FETCH_FAILED');
+    const parsed = parseCubePvpState(resp.text);
+    if (!parsed.recognized) throw new GameAPIError('Cube PvP state response was not recognized', 'CUBE_PVP_STATE_PARSE_FAILED');
+    return parsed;
+  }
+
+  async getMonsterPhasePvpState(activeId, sinceLogId = 0) {
+    const normalizedId = this._requireNumericId(activeId, 'Monster phase active ID');
+    const url = `${BASE_URL}/pvp_style_state.php?source=monster_phase&since_log_id=${encodeURIComponent(Math.max(0, Number(sinceLogId) || 0))}&active_id=${encodeURIComponent(normalizedId)}`;
+    const resp = await this.http.get(url);
+    if (!resp.ok) throw new GameAPIError(`Monster phase PvP state failed: HTTP ${resp.status}`, 'MONSTER_PHASE_PVP_STATE_FETCH_FAILED');
+    const parsed = parseCubePvpState(resp.text);
+    if (!parsed.recognized) throw new GameAPIError('Monster phase PvP state response was not recognized', 'MONSTER_PHASE_PVP_STATE_PARSE_FAILED');
+    return parsed;
   }
 
   async _getDungeonInstanceSnapshot(dungeon) {
@@ -242,7 +505,8 @@ class GameAPI {
       throw new GameAPIError(`Dungeon instance ${dungeon.instanceId} loaded but verified location links were missing`, 'DUNGEON_INSTANCE_PARSE_FAILED');
     }
 
-    const locations = await Promise.all(instance.locations.map(async location => {
+    const locations = [];
+    for (const location of instance.locations) {
       const response = await this.http.get(new URL(location.url, BASE_URL).toString());
       if (!response.ok) {
         throw new GameAPIError(`Failed to fetch dungeon location ${location.locationId}: HTTP ${response.status}`, 'DUNGEON_LOCATION_FETCH_FAILED');
@@ -257,31 +521,40 @@ class GameAPI {
       if (!parsed.recognized) {
         throw new GameAPIError(`Dungeon location ${location.locationId} did not match the verified markup`, 'DUNGEON_LOCATION_PARSE_FAILED');
       }
-      return parsed;
-    }));
+      locations.push(parsed);
+    }
     return { dungeon, instance, locations };
   }
 
-  async getDungeonSnapshot(dungeonName, { includePrevious = false } = {}) {
+  async getDungeonSnapshot(dungeonName, { includePrevious = false, directoryInstances = null } = {}) {
     const wanted = String(dungeonName || '').trim().toLowerCase();
     if (!wanted) throw new GameAPIError('Dungeon name is required', 'INVALID_DUNGEON_NAME');
-    const available = (await this.getDungeonInstances())
-      .filter(entry => entry.name.trim().toLowerCase() === wanted)
-      .filter(entry => entry.status !== 'failed' && entry.guildLootState !== 'none');
+    const directory = Array.isArray(directoryInstances)
+      ? directoryInstances
+      : await this.getDungeonInstances();
+    const available = directory
+      .filter(entry => entry.name.trim().toLowerCase() === wanted);
     const selected = includePrevious
-      ? available
+      ? available.filter(entry => entry.active === true
+        || (entry.status === 'ended' && entry.guildLootState === 'pending')
+        || entry.status === 'failed')
       : available.filter(entry => entry.active).slice(0, 1);
     if (selected.length === 0) {
       return { sourceAvailable: true, dungeon: null, locations: [], monsters: [], resources: {}, message: `${dungeonName} is not currently open.` };
     }
 
-    const reads = await Promise.allSettled(selected.map(dungeon => this._getDungeonInstanceSnapshot(dungeon)));
-    const snapshots = reads.filter(result => result.status === 'fulfilled').map(result => result.value);
-    const errors = reads
-      .map((result, index) => result.status === 'rejected'
-        ? { instanceId: selected[index].instanceId, message: result.reason?.message || String(result.reason) }
-        : null)
-      .filter(Boolean);
+    const snapshots = [];
+    const errors = [];
+    // Historical instances and their locations may contain large pages. Read
+    // them in order so one stale instance cannot fan out dozens of retained
+    // response bodies or starve the shared discovery queue.
+    for (const dungeon of selected) {
+      try {
+        snapshots.push(await this._getDungeonInstanceSnapshot(dungeon));
+      } catch (error) {
+        errors.push({ instanceId: dungeon.instanceId, message: error?.message || String(error) });
+      }
+    }
     if (snapshots.length === 0 && errors.length > 0) {
       throw new GameAPIError(errors[0].message, 'DUNGEON_INSTANCE_PARSE_FAILED');
     }
@@ -368,11 +641,12 @@ class GameAPI {
     if (!resp.ok) {
       throw new GameAPIError(`Failed to fetch monster stats: HTTP ${resp.status}`, 'MONSTER_STATS_FETCH_FAILED');
     }
-    const stats = parseBattlePage(resp.text).monsterStats;
+    const battle = parseBattlePage(resp.text);
+    const stats = battle.monsterStats;
     if (!stats) {
       throw new GameAPIError('Battle page loaded but Monster Stats were missing', 'MONSTER_STATS_PARSE_FAILED');
     }
-    return stats;
+    return { ...stats, possibleLoot: battle.possibleLoot || [] };
   }
 
   async getGearInventory(context = 'attack', quickSetNumber = null) {
@@ -680,8 +954,8 @@ class GameAPI {
     };
   }
 
-  async useManaPotion(inventoryId) {
-    const result = await this._useConsumable(inventoryId, 'Mana');
+  async useManaPotion(inventoryId, quantity = 1) {
+    const result = await this._useConsumable(inventoryId, 'Mana', quantity);
     const restoredMatch = result.detail.match(/([\d,]+)\s+mana\b/i);
     const { detail, ...publicResult } = result;
     return {
@@ -690,21 +964,25 @@ class GameAPI {
     };
   }
 
-  async _useConsumable(inventoryId, resourceName = 'Consumable') {
+  async _useConsumable(inventoryId, resourceName = 'Consumable', quantity = 1) {
     const normalizedInventoryId = String(inventoryId ?? '').trim();
     if (!/^\d{1,30}$/.test(normalizedInventoryId)) {
-      throw new GameAPIError('Invalid Stamina potion inventory ID', 'INVALID_INVENTORY_ID');
+      throw new GameAPIError(`Invalid ${resourceName} inventory ID`, 'INVALID_INVENTORY_ID');
     }
+    const normalizedQuantity = Math.min(10, Math.max(1, Math.trunc(Number(quantity) || 1)));
     const body = new URLSearchParams({ inv_id: normalizedInventoryId });
+    if (normalizedQuantity > 1) body.set('qty', String(normalizedQuantity));
     const url = `${BASE_URL}/use_item.php`;
-    Logger.logApi(this.accountName, 'POST', url, null, `Using one discovered ${resourceName} potion`);
+    Logger.logApi(this.accountName, 'POST', url, null,
+      `Using ${normalizedQuantity} discovered ${resourceName} potion${normalizedQuantity === 1 ? '' : 's'}`);
     const resp = await this.http.post(url, body);
     const message = String(resp.text || '').trim();
-    const successMatch = message.match(/^Item consumed successfully!\s*\(([^()]{1,180});\s*used\s+1x\)\s*$/i);
+    const successMatch = message.match(/^Item consumed successfully!\s*\(([^()]{1,180});\s*used\s+(\d{1,2})x\)\s*$/i);
+    const usedQuantity = successMatch ? Number(successMatch[2]) : 0;
     const result = {
       success: Boolean(successMatch),
       message: message.slice(0, 240),
-      usedQuantity: successMatch ? 1 : 0,
+      usedQuantity,
       detail: successMatch?.[1] || '',
     };
     Logger.logApi(this.accountName, 'POST', url, resp.status,
@@ -749,6 +1027,85 @@ class GameAPI {
       throw new GameAPIError('Dashboard loaded but no authenticated top-bar values were found', 'DASHBOARD_PARSE_FAILED');
     }
     return dashboard;
+  }
+
+  async fetchAutoFarmState(area = {}) {
+    const isEvent = Number.isInteger(Number(area.eventId)) && Number(area.eventId) > 0;
+    const routeKey = isEvent ? 'event' : 'gate';
+    const routeId = isEvent ? Number(area.eventId) : Number(area.gateId);
+    const wave = Number(area.wave);
+    if (!Number.isInteger(routeId) || routeId < 1 || !Number.isInteger(wave) || wave < 1) {
+      throw new GameAPIError('A verified Gate or Event wave is required to read Auto Farm', 'INVALID_AUTO_FARM_AREA');
+    }
+    const url = `${BASE_URL}/active_wave.php?${routeKey}=${routeId}&wave=${wave}`;
+    const resp = await this.http.get(url);
+    if (!resp.ok) {
+      throw new GameAPIError(`Failed to fetch Auto Farm: HTTP ${resp.status}`, 'AUTO_FARM_FETCH_FAILED');
+    }
+    const state = parseAutoFarmPanel(resp.text);
+    if (!state.recognized) {
+      throw new GameAPIError('Auto Farm wave page loaded but the verified panel was missing', 'AUTO_FARM_PARSE_FAILED');
+    }
+    return state;
+  }
+
+  async _autoFarmAction(action, fields = {}) {
+    const allowedActions = new Set(['toggle', 'save_settings', 'add_target', 'update_target', 'remove_target']);
+    if (!allowedActions.has(action)) throw new GameAPIError('Invalid Auto Farm action', 'INVALID_AUTO_FARM_ACTION');
+    const body = new URLSearchParams({ action });
+    for (const [key, value] of Object.entries(fields)) body.set(key, String(value));
+    const url = `${BASE_URL}/auto_farm_actions.php`;
+    Logger.logApi(this.accountName, 'POST', url, null, `Auto Farm: ${action}`);
+    const resp = await this.http.post(url, body, { retries: 1 });
+    const data = this._parseJsonSafe(resp.text);
+    const success = data?.ok === true;
+    Logger.logApi(this.accountName, 'POST', url, resp.status, success ? data.msg || action : 'Auto Farm action failed');
+    return { success, message: data?.msg || 'Invalid Auto Farm response' };
+  }
+
+  toggleAutoFarm(enabled) {
+    return this._autoFarmAction('toggle', { enabled: enabled ? 1 : 0 });
+  }
+
+  saveAutoFarmSettings(settings = {}) {
+    return this._autoFarmAction('save_settings', {
+      TOTAL_MONSTERS_TO_KILL: settings.totalMonsters,
+      HP_POTIONS_MAX_TO_USE: settings.hpPotionLimit,
+      STAM_POT_SMALL_ITEM_MAX_TO_USE: settings.staminaPotionLimits?.small,
+      STAM_POT_HALF_ITEM_ID_MAX_TO_USE: settings.staminaPotionLimits?.large,
+      STAM_POT_FULL_ITEM_ID_MAX_TO_USE: settings.staminaPotionLimits?.full,
+      STAM_POT_ADV_ITEM_MAX_TO_USE: settings.staminaPotionLimits?.adventure,
+      STAM_POT_PRIORITY_ITEM_ID: settings.priorityItemId,
+      AUTO_LOOT_TO_LEVEL: settings.autoLootToLevel ? 1 : 0,
+      PRC_EXP_LEFT: settings.expLeftPercent,
+    });
+  }
+
+  addAutoFarmTarget(target = {}) {
+    return this._autoFarmAction('add_target', {
+      MONSTER_ID: this._requireNumericId(target.monsterId, 'Auto Farm monster ID'),
+      DAMAGE_OR_CAP: target.damageMode === 0 ? 0 : 1,
+      MIN_DAMAGE: Math.max(0, Math.trunc(Number(target.minDamage) || 0)),
+      IS_ENABLED: target.enabled === true ? 1 : 0,
+      MAX_STACK_PER_HIT: Math.min(250, Math.max(1, Math.trunc(Number(target.maxStack) || 1))),
+    });
+  }
+
+  updateAutoFarmTarget(target = {}) {
+    return this._autoFarmAction('update_target', {
+      TARGET_ID: this._requireNumericId(target.targetId, 'Auto Farm target ID'),
+      MONSTER_ID: this._requireNumericId(target.monsterId, 'Auto Farm monster ID'),
+      IS_ENABLED: target.enabled === true ? 1 : 0,
+      DAMAGE_OR_CAP: target.damageMode === 0 ? 0 : 1,
+      MIN_DAMAGE: Math.max(0, Math.trunc(Number(target.minDamage) || 0)),
+      MAX_STACK_PER_HIT: Math.min(250, Math.max(1, Math.trunc(Number(target.maxStack) || 1))),
+    });
+  }
+
+  removeAutoFarmTarget(targetId) {
+    return this._autoFarmAction('remove_target', {
+      TARGET_ID: this._requireNumericId(targetId, 'Auto Farm target ID'),
+    });
   }
 
   // ─── Internal Helpers ──────────────────────────────────────────────
@@ -894,10 +1251,11 @@ class GameAPI {
  * Custom error for GameAPI operations
  */
 class GameAPIError extends Error {
-  constructor(message, code) {
+  constructor(message, code, status = null) {
     super(message);
     this.name = 'GameAPIError';
     this.code = code;
+    if (status !== null && status !== undefined) this.status = Number(status);
   }
 }
 
@@ -952,4 +1310,4 @@ class GameAPIError extends Error {
  * @property {Object|null} phase - { changed, image }
  */
 
-module.exports = { GameAPI, GameAPIError };
+module.exports = { GameAPI, GameAPIError, isNoGuildResponse, isWaveAccessDenied };

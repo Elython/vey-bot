@@ -1,0 +1,61 @@
+  <div class="app-container">
+    <!-- Compact account/module bar -->
+    <header class="top-bar">
+      <div class="tabs" id="tabContainer" style="display: none;">
+        <button class="tab-btn active" id="tabHomeBtn" data-tab="home">Overview</button>
+        <button class="tab-btn" id="tabBotSetupBtn" data-tab="botSetup">Bot Setup</button>
+        <button class="tab-btn" id="tabAutoFarmBtn" data-tab="autoFarm">Auto Farm</button>
+        <button class="tab-btn" id="tabCombatBtn" data-tab="combat">Combat</button>
+        <button class="tab-btn" id="tabEnergyFarmBtn" data-tab="energyFarm">Progression</button>
+        <button class="tab-btn" id="tabBattlePassBtn" data-tab="battlePass">Battle Pass</button>
+        <button class="tab-btn" id="tabAdventureQuestsBtn" data-tab="adventureQuests">Adv Quests</button>
+        <button class="tab-btn" id="tabNPCConfigBtn" data-tab="npcConfig">Targets</button>
+        <button class="tab-btn" id="tabLootConfigBtn" data-tab="lootConfig">Looting</button>
+        <button class="tab-btn" id="tabStatisticsBtn" data-tab="statistics">Statistics</button>
+        <button class="tab-btn" id="tabConsoleBtn" data-tab="console" style="display: none;">Logs</button>
+      </div>
+      <div class="app-title-unauth" id="unauthTitle">Veybot</div>
+
+      <!-- Header Controls -->
+      <div class="header-controls">
+        <button id="btnHeaderStartStop" class="header-btn" title="Start/Stop Bot" style="display: none;">
+          <i data-lucide="play"></i>
+        </button>
+        <button id="btnHeaderApplyConfig" class="header-btn" title="Apply saved changes" style="display: none;">
+          <i data-lucide="save"></i>
+        </button>
+
+        <!-- Gear Menu -->
+        <div class="gear-container">
+          <button class="gear-btn" id="gearBtn" title="Settings"><i data-lucide="settings"></i></button>
+          <div class="gear-dropdown" id="gearDropdown">
+            <label class="menu-item menu-checkbox">
+              <input type="checkbox" id="chkDevMode"> Developer mode
+            </label>
+            <hr class="menu-divider">
+            <button id="btnLoadConfig" class="menu-item" type="button"><i data-lucide="folder-open"></i> Load
+              config</button>
+            <button id="btnSaveConfig" class="menu-item" type="button"><i data-lucide="save"></i> Save config</button>
+            <button id="btnExportAccountData" class="menu-item" type="button"><i data-lucide="archive"></i> Export account data</button>
+            <button id="btnRestoreAccountData" class="menu-item" type="button"><i data-lucide="archive-restore"></i> Restore account data</button>
+            <button id="menuGatesBtn" class="menu-item" type="button"><i data-lucide="map"></i> Gates</button>
+            <button id="menuRefreshMonsterCatalogBtn" class="menu-item" type="button"><i data-lucide="database-zap"></i> Refresh monster catalog</button>
+            <button id="menuClearHistoryBtn" class="menu-item" type="button"><i data-lucide="history"></i> Clear
+              History</button>
+            <button id="menuPurgeBtn" class="menu-item menu-item-danger" type="button" disabled><i
+                data-lucide="shield-alert"></i> Purge</button>
+            <hr class="menu-divider">
+            <button id="menuViewBrowserBtn" class="menu-item" disabled><i data-lucide="globe"></i> View in
+              Browser</button>
+            <button id="menuPauseResumeBtn" class="menu-item" disabled><i data-lucide="pause"></i> Pause Bot</button>
+            <button id="menuAddAccountBtn" class="menu-item"><i data-lucide="user-plus"></i> Add New Account</button>
+            <button id="menuSavedAccountsBtn" class="menu-item"><i data-lucide="users"></i> Saved Accounts</button>
+            <hr class="menu-divider">
+            <button id="menuLogoutBtn" class="menu-item" disabled><i data-lucide="log-out"></i> Logout</button>
+          </div>
+        </div>
+
+        <!-- Quit Button -->
+        <button id="btnHeaderQuit" class="header-btn" title="Quit"><i data-lucide="power"></i></button>
+      </div>
+    </header>

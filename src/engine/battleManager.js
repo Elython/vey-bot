@@ -24,6 +24,10 @@ class BattleManager {
     const displayId = typeof battleRef === 'object' ? (battleRef.dgmid || battleRef.id) : battleRef;
     Logger.logClient(this.accountName, `[BattleManager] Loading battle ${displayId}`);
     const battle = await this.gameAPI.getBattleConfig(battleRef);
+    return this.adoptBattle(battle);
+  }
+
+  adoptBattle(battle) {
     if (!battle.battleCfg?.id) throw new Error('Battle configuration is missing a monster ID');
     if (!battle.userId) throw new Error('Battle configuration is missing a user ID');
     this.currentBattle = battle;

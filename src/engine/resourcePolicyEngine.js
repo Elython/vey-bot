@@ -52,10 +52,11 @@ class ResourcePolicyEngine {
     const mana = this.config.resources.mana;
     const limit = mana.potionLimits[type];
     const used = Math.max(0, Math.trunc(Number(usedCount) || 0));
-    if (!mana.allowPotions) return { type, limit, used, allowed: false, reason: 'Mana potion use is disabled' };
-    if (limit <= 0) return { type, limit, used, allowed: false, reason: 'Potion limit is zero' };
-    if (used >= limit) return { type, limit, used, allowed: false, reason: 'Potion limit reached' };
-    return { type, limit, used, allowed: true, reason: 'Potion use is within policy' };
+    const remaining = Math.max(0, limit - used);
+    if (!mana.allowPotions) return { type, limit, used, remaining, allowed: false, reason: 'Mana potion use is disabled' };
+    if (limit <= 0) return { type, limit, used, remaining, allowed: false, reason: 'Potion limit is zero' };
+    if (used >= limit) return { type, limit, used, remaining, allowed: false, reason: 'Potion limit reached' };
+    return { type, limit, used, remaining, allowed: true, reason: 'Potion use is within policy' };
   }
 
   canUseHealthPotion(usedCount = 0) {

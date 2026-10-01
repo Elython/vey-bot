@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { hashCanonical } = require('./loadoutCatalog');
-const { getDataDir } = require('../main/paths');
+const { getDataDir } = require('../main/dataPaths');
 
 const XP_MODEL_SCHEMA_VERSION = 1;
 const DEFAULT_PATH = path.join(getDataDir(), 'xp_observations.json');
@@ -151,6 +151,36 @@ class XpModel {
       rate,
       plan: candidates[0] || null,
     };
+  }
+
+  purgeAccount(accountName) {
+    if (!accountName) return 0;
+    const expectedAccountKey = hashCanonical({ accountName: String(accountName) });
+    let removed = 0;
+    for (const [key, record] of Object.entries(this.data.records)) {
+      if (record.accountKey !== expectedAccountKey) continue;
+      delete this.data.records[key];
+      removed += 1;
+    }
+    if (removed > 0) this._write();
+    return removed;
+  }
+
+  exportAccount(accountName) {
+    const expectedAccountKey = hashCanonical({ accountName: String(accountName) });
+    return Object.fromEntries(Object.entries(this.data.records)
+      .filter(([, record]) => record.accountKey === expectedAccountKey)
+      .map(([key, record]) => [key, clone(record)]));
+  }
+
+  replaceAccount(accountName, records = {}) {
+    if (!records || typeof records !== 'object' || Array.isArray(records)) throw new Error('Invalid XP-observation backup');
+    this.purgeAccount(accountName);
+    const expectedAccountKey = hashCanonical({ accountName: String(accountName) });
+    for (const [key, record] of Object.entries(records)) {
+      if (record?.accountKey === expectedAccountKey) this.data.records[key] = clone(record);
+    }
+    this._write();
   }
 
   _read() {

@@ -6,7 +6,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { getDataDir } = require('../main/paths');
+const { getDataDir } = require('./dataPaths');
 
 class CredentialManager {
   constructor(safeStorage, storagePath) {

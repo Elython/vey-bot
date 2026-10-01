@@ -1,0 +1,18 @@
+<script>
+window.BATTLE_CFG = {
+  isDungeon: true,
+  isGlobal: false,
+  id: 700001,
+  instanceId: 800001,
+  dgmid: 700001,
+  endpoints: { ATTACK: "damage.php", JOIN: "dungeon_join_battle.php", LOOT: "dungeon_loot.php", HEAL: "user_heal.php", HEAL_POTION: "user_heal_potion.php" },
+  privateBoss: { enabled: true, slug: "redacted", csrf: "" }
+};
+const PLAYER_MAX_HP = 25000;
+const PLAYER_MAX_MANA = 250;
+const USER_ID = 100001;
+</script>
+<div id="hpText">500,000 / 500,000 HP</div>
+<div id="pHpText">20,000 / 25,000 HP</div>
+<div id="pManaText">250 / 250 MP</div>
+<button id="join-battle" class="join-btn">Join Battle</button>

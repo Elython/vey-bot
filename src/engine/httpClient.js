@@ -197,8 +197,17 @@ class HttpClient {
     if (options.cookieOverrides && method !== 'GET') {
       throw new HttpClientError('Cookie overrides are restricted to read-only GET requests', 'INVALID_COOKIE_OVERRIDE');
     }
-    const maxRetries = options.retries ?? (method === 'GET' ? this.maxRetries : 1);
+    // `retries` historically names the maximum number of total attempts in
+    // this client. Clamp it to one so callers can safely express "zero
+    // retries" without accidentally suppressing the initial request itself.
+    const requestedAttempts = Number(options.retries ?? (method === 'GET' ? this.maxRetries : 1));
+    const maxRetries = Number.isFinite(requestedAttempts)
+      ? Math.max(1, Math.trunc(requestedAttempts))
+      : 1;
     const timeout = options.timeout ?? this.defaultTimeout;
+    const noRetryStatuses = new Set((Array.isArray(options.noRetryStatuses) ? options.noRetryStatuses : [])
+      .map(Number)
+      .filter(Number.isFinite));
     let lastError = null;
     const requestGeneration = this.cancelGeneration;
 
@@ -226,14 +235,18 @@ class HttpClient {
         const timeoutId = setTimeout(() => controller.abort(), timeout);
 
         let resp;
+        let text;
         try {
           resp = await fetcher(url, { ...fetchOptions, signal: controller.signal });
+          // Keep the same deadline active while Electron consumes the body.
+          // A server can deliver headers and then stall forever; clearing the
+          // timer before text() completed left Progression scans permanently
+          // pending and retained their renderer/main-process promises.
+          text = await resp.text();
         } finally {
           clearTimeout(timeoutId);
           this.activeControllers.delete(controller);
         }
-
-        const text = await resp.text();
 
         // Check for Cloudflare challenge
         if (text.includes('Just a moment...') || text.includes('Attention Required! | Cloudflare')) {
@@ -246,9 +259,16 @@ class HttpClient {
           throw new HttpClientError('Game session is not authenticated', 'AUTH_REQUIRED', resp.status);
         }
 
-        const response = new HttpResponse(resp.status, resp.ok, text, resp.headers);
+        const response = new HttpResponse(
+          resp.status,
+          resp.ok,
+          text,
+          resp.headers,
+          typeof resp.url === 'string' && resp.url ? resp.url : url,
+          resp.redirected === true,
+        );
 
-        if (!resp.ok && attempt < maxRetries) {
+        if (!resp.ok && attempt < maxRetries && !noRetryStatuses.has(Number(resp.status))) {
           // Retry on server errors (5xx)
           if (resp.status >= 500) {
             const delay = this.baseRetryDelay * Math.pow(2, attempt - 1);
@@ -316,12 +336,16 @@ class HttpResponse {
    * @param {boolean} ok
    * @param {string} text
    * @param {Headers} headers
+   * @param {string} url - Final response URL after redirects
+   * @param {boolean} redirected
    */
-  constructor(status, ok, text, headers) {
+  constructor(status, ok, text, headers, url = '', redirected = false) {
     this.status = status;
     this.ok = ok;
     this.text = text;
     this.headers = headers;
+    this.url = String(url || '');
+    this.redirected = redirected === true;
   }
 
   /**

@@ -1,5 +1,5 @@
 const MONSTER_AREAS = Object.freeze([
-  { key: 'grakthar_1', label: 'Grakthar 1', type: 'gate', gateId: 3, wave: 3 },
+  { key: 'grakthar_1', label: 'Grakthar 1', type: 'gate', gateId: 3, wave: 3, supportsAutoFarm: false },
   { key: 'grakthar_2', label: 'Grakthar 2', type: 'gate', gateId: 3, wave: 5 },
   { key: 'grakthar_3', label: 'Grakthar 3', type: 'gate', gateId: 3, wave: 8 },
   { key: 'olympus_1', label: 'Olympus 1', type: 'gate', gateId: 5, wave: 9 },
@@ -18,14 +18,34 @@ const MONSTER_AREAS = Object.freeze([
 ]);
 
 const MONSTER_AREA_KEYS = new Set(MONSTER_AREAS.map(area => area.key));
+let customMonsterAreas = [];
+let hiddenMonsterAreaKeys = new Set();
 
-function listMonsterAreas() {
-  return MONSTER_AREAS.map(area => ({ ...area }));
+function configureMonsterAreas(areaCatalog = {}) {
+  customMonsterAreas = (Array.isArray(areaCatalog.custom) ? areaCatalog.custom : [])
+    .map(area => ({ ...area, custom: true }))
+    .filter(area => area.key && area.label && ['gate', 'event'].includes(area.type));
+  hiddenMonsterAreaKeys = new Set(Array.isArray(areaCatalog.hidden) ? areaCatalog.hidden.map(String) : []);
+}
+
+function listMonsterAreas(options = {}) {
+  const includeHidden = options?.includeHidden === true;
+  const areas = [...MONSTER_AREAS.map(area => ({ ...area, custom: false })), ...customMonsterAreas]
+    .map(area => ({ ...area, hidden: hiddenMonsterAreaKeys.has(area.key) }));
+  if (includeHidden) return areas;
+  return areas.filter(area => !area.hidden).map(({ hidden, custom, ...area }) => area);
 }
 
 function getMonsterArea(key) {
-  const area = MONSTER_AREAS.find(candidate => candidate.key === key);
-  return area ? { ...area } : null;
+  const area = [...MONSTER_AREAS, ...customMonsterAreas].find(candidate => candidate.key === key);
+  if (!area) return null;
+  const { custom, ...record } = area;
+  return { ...record };
+}
+
+function supportsAutoFarm(areaOrKey) {
+  const area = typeof areaOrKey === 'string' ? getMonsterArea(areaOrKey) : areaOrKey;
+  return Boolean(area && ['gate', 'event'].includes(area.type) && area.supportsAutoFarm !== false);
 }
 
 function monsterTypeKey(name) {
@@ -83,8 +103,10 @@ function selectGateMonster(monsters, configuredTypes, nowEpoch = Math.floor(Date
 module.exports = {
   MONSTER_AREAS,
   MONSTER_AREA_KEYS,
+  configureMonsterAreas,
   listMonsterAreas,
   getMonsterArea,
+  supportsAutoFarm,
   monsterTypeKey,
   selectGateMonster,
 };

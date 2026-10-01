@@ -1,0 +1,16 @@
+<script>
+function getOrCreateUserUID() {
+  const uidCookie = document.cookie.split('; ').find(row => row.startsWith('useruid='));
+  if (uidCookie) return uidCookie.split('=')[1];
+  const uid = 'uid-' + Math.random().toString(36).substr(2, 16) + Date.now();
+  const expires = new Date();
+  expires.setFullYear(expires.getFullYear() + 1);
+  document.cookie = `useruid=${uid}; expires=${expires.toUTCString()}; path=/`;
+  return uid;
+}
+const userUID = getOrCreateUserUID();
+const formData = new FormData();
+formData.append('chapterid', '517634');
+formData.append('reaction', reactionType);
+formData.append('useruid', userUID);
+</script>

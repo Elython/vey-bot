@@ -46,12 +46,15 @@ class ProgressionEngine {
   evaluate({ accountName, state = {}, lootCandidates = [], chaptersAvailable = 0, configOverride = null } = {}) {
     const activeConfig = configOverride || this.config;
     const policy = activeConfig.progression || {};
+    const chapterFallbackEnabled = policy.allowChapterFallback === true
+      && activeConfig.energyFarming?.enabled === true;
+    const potionFallbackEnabled = activeConfig.resources?.stamina?.allowPotions === true;
     const progress = parseXpProgress(state);
     const lootXpBoost = resolveLootXpBoost(state);
     const base = {
       action: ProgressionAction.FOLLOW_BASE,
-      deferCurrentLoot: policy.enabled === true && policy.useLootForLeveling === true,
-      status: policy.enabled === true ? 'Monitoring' : 'Disabled',
+      deferCurrentLoot: policy.useLootForLeveling === true,
+      status: 'Monitoring',
       xpNeeded: progress.needed,
       eligibleLootXp: 0,
       eligibleLootCount: 0,
@@ -61,8 +64,23 @@ class ProgressionEngine {
       lootXpBoostPercent: lootXpBoost.percent,
       lootXpMultiplier: lootXpBoost.multiplier,
       lootXpBoostEndsAt: lootXpBoost.endsAt,
+      staminaFlow: {
+        current: 'waiting',
+        steps: {
+          looting: { enabled: policy.useLootForLeveling === true, available: false },
+          chapters: { enabled: chapterFallbackEnabled, available: chapterFallbackEnabled && Number(chaptersAvailable) > 0 },
+          // A missing target potion observation means combat has not loaded a
+          // target/drawer yet, not that the global potion path is exhausted.
+          potions: {
+            enabled: potionFallbackEnabled,
+            available: potionFallbackEnabled && (
+              state.targetStaminaPotion == null || state.targetStaminaPotion.available === true
+            ),
+          },
+          waiting: { enabled: true, available: true },
+        },
+      },
     };
-    if (policy.enabled !== true) return base;
     if (!progress.recognized) return { ...base, status: 'Waiting for XP data' };
 
     const ledger = this.lootLedger.build(
@@ -78,14 +96,22 @@ class ProgressionEngine {
       eligibleLootCount: ledger.eligible.length,
       claimCount: claimPlan.claims.length,
       unknownLootCount: ledger.excluded.filter(candidate => /cannot be verified|unavailable|markup/i.test(candidate.excludedReason || '')).length,
+      staminaFlow: {
+        ...base.staminaFlow,
+        steps: {
+          ...base.staminaFlow.steps,
+          looting: { enabled: policy.useLootForLeveling === true, available: claimPlan.enough },
+        },
+      },
     };
 
     if (policy.useLootForLeveling === true && claimPlan.enough) {
       const imminent = this._imminentLevelPlan(accountName, state, chaptersAvailable, activeConfig);
       if ((Number(state.stamina) || 0) > 0) {
-        if (policy.allowChapterFallback === true && imminent?.plan?.chapters > 0) {
+        if (chapterFallbackEnabled && imminent?.plan?.chapters > 0) {
           return {
             ...statusBase,
+            staminaFlow: { ...statusBase.staminaFlow, current: 'chapters' },
             action: ProgressionAction.FARM_CHAPTER_TOP_OFF,
             chapters: imminent.plan.chapters,
             preferredStaminaCost: imminent.plan.staminaCost,
@@ -94,6 +120,7 @@ class ProgressionEngine {
         }
         return {
           ...statusBase,
+          staminaFlow: { ...statusBase.staminaFlow, current: 'looting' },
           action: ProgressionAction.DRAIN_STAMINA,
           ignoreSoftStaminaRules: true,
           preferredStaminaCost: imminent?.plan?.chapters === 0 ? imminent.plan.staminaCost : null,
@@ -102,6 +129,7 @@ class ProgressionEngine {
       }
       return {
         ...statusBase,
+        staminaFlow: { ...statusBase.staminaFlow, current: 'looting' },
         action: ProgressionAction.CLAIM_LOOT,
         claim: claimPlan.claims[0],
         claims: claimPlan.claims,
@@ -109,11 +137,12 @@ class ProgressionEngine {
       };
     }
 
-    if (policy.allowChapterFallback === true) {
+    if (chapterFallbackEnabled) {
       const imminent = this._imminentLevelPlan(accountName, state, chaptersAvailable, activeConfig);
       if (imminent?.plan?.chapters > 0) {
         return {
           ...statusBase,
+          staminaFlow: { ...statusBase.staminaFlow, current: 'chapters' },
           action: ProgressionAction.FARM_CHAPTER_TOP_OFF,
           chapters: imminent.plan.chapters,
           preferredStaminaCost: imminent.plan.staminaCost,
@@ -121,20 +150,22 @@ class ProgressionEngine {
         };
       }
     }
-    const chapterFallbackAvailable = policy.allowChapterFallback === true
-      && activeConfig.energyFarming?.enabled !== false
+    const chapterFallbackAvailable = chapterFallbackEnabled
       && Number(chaptersAvailable) > 0;
-    if (policy.allowTargetPotionFallback === true
+    if (potionFallbackEnabled
       && !chapterFallbackAvailable
       && state.currentBattle
       && state.isJoined === true
       && state.monsterDead !== true
       && state.targetStaminaPotion?.available === true) {
+      const drainBeforePots = policy.drainBeforePots !== false;
       return {
         ...statusBase,
-        ignoreSoftStaminaRules: true,
+        staminaFlow: { ...statusBase.staminaFlow, current: 'potions' },
+        ignoreSoftStaminaRules: drainBeforePots,
         useTargetStaminaPotion: true,
-        status: Number(state.stamina) > 0
+        usePotionImmediately: !drainBeforePots,
+        status: drainBeforePots && Number(state.stamina) > 0
           ? `Draining Stamina before ${state.targetStaminaPotion.name}`
           : `Using target-authorized ${state.targetStaminaPotion.name}`,
       };

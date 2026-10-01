@@ -101,9 +101,9 @@ class GameController {
     return this.gameAPI.useStaminaPotion(inventoryId);
   }
 
-  async useManaPotion(inventoryId, signal = null) {
+  async useManaPotion(inventoryId, quantity = 1, signal = null) {
     await this.timing.waitForAction(signal);
-    return this.gameAPI.useManaPotion(inventoryId);
+    return this.gameAPI.useManaPotion(inventoryId, quantity);
   }
 
   async applyQuickSet(params, signal = null) {

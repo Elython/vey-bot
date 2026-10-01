@@ -1,0 +1,76 @@
+      <!-- Account-scoped statistics read from the local database; no network scan is performed here. -->
+      <section id="viewStatistics" class="view-panel statistics-view" style="display: none;">
+        <div class="panel-header-row statistics-toolbar">
+          <div>
+            <div class="panel-header">Statistics</div>
+            <div id="statisticsStatus" class="panel-subtitle">Select a period to inspect saved account activity.</div>
+          </div>
+          <div class="statistics-toolbar-actions">
+            <select id="statisticsPeriod" class="tree-select" aria-label="Statistics period">
+              <option value="24h">Last 24 hours</option>
+              <option value="7d" selected>Last 7 days</option>
+              <option value="30d">Last 30 days</option>
+              <option value="all">All recorded</option>
+            </select>
+            <button id="btnRefreshStatistics" class="btn btn-primary btn-sm workspace-icon-btn" type="button"
+              title="Refresh statistics" aria-label="Refresh statistics"><i data-lucide="rotate-cw"></i></button>
+          </div>
+        </div>
+
+        <div class="statistics-summary-grid" aria-live="polite">
+          <div class="statistics-summary-card"><span>Attacks</span><strong id="statisticsAttacks">0</strong></div>
+          <div class="statistics-summary-card"><span>Targets reached</span><strong id="statisticsReached">0</strong></div>
+          <div class="statistics-summary-card"><span>Stamina</span><strong id="statisticsStamina">0</strong></div>
+          <div class="statistics-summary-card"><span>Loot claims</span><strong id="statisticsClaims">0</strong></div>
+          <div class="statistics-summary-card"><span>EXP</span><strong id="statisticsXp">0</strong></div>
+          <div class="statistics-summary-card"><span>Gold</span><strong id="statisticsGold">0</strong></div>
+          <div class="statistics-summary-card"><span>Items</span><strong id="statisticsItems">0</strong></div>
+          <div class="statistics-summary-card"><span>PvP joined</span><strong id="statisticsPvpJoined">0</strong></div>
+          <div class="statistics-summary-card"><span>PvP wins</span><strong id="statisticsPvpWins">0</strong></div>
+          <div class="statistics-summary-card"><span>PvP losses</span><strong id="statisticsPvpLosses">0</strong></div>
+          <div class="statistics-summary-card"><span>Reach rate</span><strong id="statisticsReachRate">0%</strong></div>
+          <div class="statistics-summary-card"><span>Avg ST / hit</span><strong id="statisticsAverageStamina">0</strong></div>
+          <div class="statistics-summary-card"><span>Avg EXP / claim</span><strong id="statisticsAverageXp">0</strong></div>
+          <div class="statistics-summary-card"><span>Potions used</span><strong id="statisticsPotionsUsed">0</strong></div>
+          <div class="statistics-summary-card"><span>Chapters</span><strong id="statisticsChapters">0</strong></div>
+          <div class="statistics-summary-card"><span>Healing actions</span><strong id="statisticsHeals">0</strong></div>
+          <div class="statistics-summary-card"><span>Avg PvP duration</span><strong id="statisticsPvpDuration">—</strong></div>
+        </div>
+
+        <div class="statistics-panel">
+          <div class="statistics-panel-title">Recent activity</div>
+          <div class="statistics-chart-legend"><span class="statistics-legend-attacks">Attacks</span><span
+              class="statistics-legend-loot">Loot claims</span></div>
+          <div id="statisticsTrend" class="statistics-trend"></div>
+        </div>
+
+        <div class="statistics-columns">
+          <div class="statistics-panel">
+            <div class="statistics-panel-title">Combat by monster</div>
+            <div id="statisticsCombatTable" class="statistics-table-wrap"></div>
+          </div>
+          <div class="statistics-panel">
+            <div class="statistics-panel-title">Loot by monster</div>
+            <div id="statisticsLootTable" class="statistics-table-wrap"></div>
+          </div>
+        </div>
+        <div class="statistics-panel">
+          <div class="statistics-panel-title">Performance by area</div>
+          <div id="statisticsAreasTable" class="statistics-table-wrap"></div>
+        </div>
+
+        <div class="statistics-columns">
+          <div class="statistics-panel">
+            <div class="statistics-panel-title">Resources</div>
+            <div id="statisticsResourcesTable" class="statistics-table-wrap"></div>
+          </div>
+          <div class="statistics-panel">
+            <div class="statistics-panel-title">Obtained items</div>
+            <div id="statisticsItemsTable" class="statistics-table-wrap"></div>
+          </div>
+        </div>
+        <div class="statistics-panel">
+          <div class="statistics-panel-title">Cube PvP history</div>
+          <div id="statisticsPvpTable" class="statistics-table-wrap"></div>
+        </div>
+      </section>

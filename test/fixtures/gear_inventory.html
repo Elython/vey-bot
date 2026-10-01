@@ -1,0 +1,55 @@
+<!doctype html>
+<html><body>
+  <div class="section" data-section-key="inv-attack-main-equipped">
+    <div class="section-title">Equipped Items — PvE Attack Set</div>
+    <div class="grid">
+      <div class="slot-box legendary">
+        <img src="scalescourge.webp" alt="Scalescourge">
+        <div class="label">weapon<br>Lv. 3<br><span>180</span> ATK · <span>0</span> DEF</div>
+        <button onclick="unequipItem(1)">Unequip</button>
+      </div>
+      <div class="slot-box legendary">
+        <img src="greaves.webp" alt="Scalescourge Emberstride Greaves">
+        <div class="label">boots<br>Lv. 2<br><span>80</span> ATK · <span>60</span> DEF</div>
+        <button onclick="unequipItem(4)">Unequip</button>
+      </div>
+    </div>
+  </div>
+  <div class="section" data-section-key="inv-attack-main-equipment">
+    <div class="section-title">Equipment</div>
+    <div class="grid">
+      <div class="slot-box legendary" data-inv-id="owned-weapon" data-item-type="weapon" data-atk="180" data-def="0">
+        <img src="scalescourge.webp" alt="Scalescourge">
+        <div class="equipment-item-name">Scalescourge</div>
+        <button class="info-btn" data-name="Scalescourge" data-desc="A captured weapon.
+⚡ 14% Extra Damage To Monsters,+ Another 14% Against Dragons
+ATK 180
+DEF 0
+Element: NONE">i</button>
+        <button onclick="showEquipModal(49, 'weapon', 'owned-weapon')">Equip</button>
+        <div>x1</div>
+      </div>
+      <div class="slot-box legendary" data-inv-id="owned-boots" data-item-type="boots" data-atk="80" data-def="60">
+        <img src="greaves.webp" alt="Scalescourge Emberstride Greaves">
+        <div class="equipment-item-name">Scalescourge Emberstride Greaves</div>
+        <button class="info-btn" data-name="Scalescourge Emberstride Greaves" data-desc="Captured greaves.
+⚡ 3% Extra Damage To Monsters,+ Another 3% Against Dragons
+ATK 80
+DEF 60
+Element: NONE">i</button>
+        <button onclick="showEquipModal(106, 'boots', 'owned-boots')">Equip</button>
+        <div>x1</div>
+      </div>
+      <div class="slot-box" data-inv-id="owned-ring" data-item-type="ring" data-atk="35" data-def="20">
+        <img src="ring.webp" alt="Ember Stained Band">
+        <div class="equipment-item-name">Ember Stained Band</div>
+        <button class="info-btn" data-name="Ember Stained Band" data-desc="A ring.
+ATK 35
+DEF 20
+Element: NONE">i</button>
+        <button onclick="showEquipModal(92, 'ring', 'owned-ring')">Equip</button>
+        <div>x2</div>
+      </div>
+    </div>
+  </div>
+</body></html>

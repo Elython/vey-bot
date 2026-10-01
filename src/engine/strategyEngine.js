@@ -66,8 +66,36 @@ class StrategyEngine {
    * @returns {{ action: string, params: Object, reason: string }}
    */
   decideNextAction(state) {
-    if ((this.config.general?.module || 'idle') === 'idle') {
+    const module = this.config.general?.module || 'idle';
+    if (module === 'idle') {
       return this._waitForConfiguredModule();
+    }
+    if (module === 'auto_farm') {
+      return state.autoFarmSynchronized === true
+        ? { action: 'WAIT', params: {}, reason: 'Server Auto Farm is running' }
+        : { action: 'AUTO_FARM_START', params: { areaKey: this.config.autoFarm?.areaKey }, reason: 'Synchronizing and starting server Auto Farm' };
+    }
+
+    // Monster-phase PvP has its own combat resources. Normal Stamina/HP/Mana
+    // policies must not block the verified duel watcher.
+    if (state.currentBattle?.phaseDuel) {
+      return {
+        action: 'MONSTER_PHASE_DUEL',
+        params: { ...state.currentBattle.phaseDuel },
+        reason: 'Monster phase requires its PvP duel before normal attacks can resume',
+      };
+    }
+
+    const stopBelow = Math.max(0, Number(this.config.resources?.stamina?.stopBelow) || 0);
+    const staminaPercent = Number(state.maxStamina) > 0
+      ? (Math.max(0, Number(state.stamina) || 0) / Number(state.maxStamina)) * 100
+      : null;
+    if (stopBelow > 0 && staminaPercent !== null && staminaPercent < stopBelow) {
+      return {
+        action: 'STOP',
+        params: {},
+        reason: `Stamina is ${staminaPercent.toFixed(1)}%, below the ${stopBelow}% hard stop`,
+      };
     }
 
     // ── Priority 1: HEAL ──
@@ -77,6 +105,18 @@ class StrategyEngine {
         action: 'HEAL',
         params: { mode },
         reason: `HP is ${state.playerHp}/${state.playerMaxHp} (below ${Math.max(0, Number(this.config.resources?.health?.sleepBelow) || 0)}% threshold)`,
+      };
+    }
+
+    if (['battle_pass', 'adventure_quests'].includes(module) && state.objective?.nextAction) {
+      return state.objective.nextAction;
+    }
+
+    if (['battle_pass', 'adventure_quests'].includes(module) && state.objective?.claim) {
+      return {
+        action: 'CLAIM_OBJECTIVE_LOOT',
+        params: { claim: state.objective.claim },
+        reason: `Claiming ${state.objective.claim.name || 'objective loot'}`,
       };
     }
 
@@ -92,7 +132,7 @@ class StrategyEngine {
 
     if (state.monsterDead && (this.config.looting?.autoLoot === false
       || state.currentLootAllowed !== true || state.progression?.deferCurrentLoot === true)) {
-      const scan = this._scanParams();
+      const scan = this._scanParams(state);
       if (!scan) return this._waitForConfiguredModule();
       return {
         action: 'SCAN',
@@ -105,9 +145,6 @@ class StrategyEngine {
       };
     }
 
-    const overflowScan = this._overflowScan(state);
-    if (overflowScan) return overflowScan;
-
     if (state.currentBattle && state.monsterDead !== true && state.pendingLoadoutAction) {
       return {
         action: 'APPLY_LOADOUT',
@@ -117,7 +154,7 @@ class StrategyEngine {
     }
 
     if (state.currentBattle && state.targetReached && !state.monsterDead && state.progression?.ignoreSoftStaminaRules !== true) {
-      const scan = this._scanParams();
+      const scan = this._scanParams(state);
       return scan ? {
         action: 'SCAN',
         params: {
@@ -134,29 +171,57 @@ class StrategyEngine {
 
     // ── Priority 3: ATTACK ──
     if (state.currentBattle && state.isJoined && !state.monsterDead) {
+      if (state.progression?.useTargetStaminaPotion === true
+          && state.progression?.usePotionImmediately === true
+          && state.targetStaminaPotion?.available === true) {
+        return {
+          action: 'USE_STAMINA_POTION',
+          params: {
+            type: state.targetStaminaPotion.type,
+            inventoryId: state.targetStaminaPotion.inventoryId,
+          },
+          reason: `Using one ${state.targetStaminaPotion.name} without draining remaining Stamina`,
+        };
+      }
       if (this._shouldUseManaPotion(state)) {
         return {
           action: 'USE_MANA_POTION',
           params: {
             type: state.targetManaPotion.type,
             inventoryId: state.targetManaPotion.inventoryId,
+            quantity: state.targetManaPotion.useQuantity || 1,
             buyIfMissing: state.targetManaPotion.buyIfMissing === true,
           },
           reason: state.targetManaPotion.buyIfMissing === true
             ? 'Buying and using a Small Mana Potion for an allowed class ability'
-            : `Using one ${state.targetManaPotion.name} for an allowed class ability`,
+            : `Using ${state.targetManaPotion.useQuantity || 1} ${state.targetManaPotion.name}${(state.targetManaPotion.useQuantity || 1) === 1 ? '' : 's'} to restore Mana`,
         };
       }
       const skill = this._selectSkill(state);
       if (skill?.blocked) {
         const plan = skill.planning || {};
         if (skill.ignoreTarget) {
-          const scan = this._scanParams();
+          const scan = this._scanParams(state);
           return scan ? {
             action: 'SCAN',
             params: { ...scan, ignoreInstanceId: state.currentTargetId || state.currentBattle?.battleCfg?.id },
             reason: 'No permitted Nuke can reach the remaining contribution before this monster dies; selecting another monster',
           } : this._waitForConfiguredModule();
+        }
+        // "Require stamina to reach target damage" may prevent a partial
+        // attack, but it must not prevent an explicitly authorized target
+        // potion from making that target reachable. Potion limits, inventory,
+        // target policy, and Progression drain ordering are still enforced by
+        // _shouldUseTargetStaminaPotion and the mutation boundary.
+        if (this._shouldUseTargetStaminaPotion(state)) {
+          return {
+            action: 'USE_STAMINA_POTION',
+            params: {
+              type: state.targetStaminaPotion.type,
+              inventoryId: state.targetStaminaPotion.inventoryId,
+            },
+            reason: `Using one ${state.targetStaminaPotion.name} because the configured target is not reachable with current Stamina`,
+          };
         }
         return {
           action: 'WAIT',
@@ -213,9 +278,9 @@ class StrategyEngine {
     // ── Priority 5: SCAN ──
     const scanForTargetPotion = !state.currentBattle
       && !this._hasStamina(state)
-      && this._canScanForTargetStaminaPotion();
+      && this._canScanForTargetStaminaPotion(state);
     if (!state.currentBattle && (this._hasStamina(state) || scanForTargetPotion)) {
-      const scan = this._scanParams();
+      const scan = this._scanParams(state);
       if (!scan) return this._waitForConfiguredModule();
       return {
         action: 'SCAN',
@@ -267,7 +332,8 @@ class StrategyEngine {
       ? 0
       : (this.config.combat?.staminaReserve || 0);
     if ((state.stamina || 0) < reserve + Math.max(0, skill?.stamCost || 0)) return false;
-    if ((skill.manaCost || 0) > (state.mana || 0)) return false;
+    const manaReserve = Math.max(0, Number(this.config.resources?.mana?.keepMin) || 0);
+    if ((state.mana || 0) < manaReserve + Math.max(0, Number(skill.manaCost) || 0)) return false;
     return true;
   }
 
@@ -277,7 +343,12 @@ class StrategyEngine {
    * @returns {boolean}
    */
   _shouldFarmEnergy(state) {
+    if (['battle_pass', 'adventure_quests'].includes(this.config.general?.module)) return false;
     if (state.progression?.ignoreSoftStaminaRules === true) return false;
+    // Progression owns every automatic Chapter-farming decision. The Chapters
+    // module still supplies the manga/reaction settings, but its Automatic mode
+    // must never bypass the user's visible "Allow Chapter fallback" switch.
+    if (this.config.progression?.allowChapterFallback !== true) return false;
     if (!this.config.energyFarming?.enabled) return false;
     const threshold = this.config.energyFarming?.farmWhenStaminaBelow || 100;
     if ((state.stamina || 0) >= threshold) return false;
@@ -290,11 +361,10 @@ class StrategyEngine {
   _shouldUseTargetStaminaPotion(state) {
     if (!state.currentBattle || state.isJoined !== true || state.monsterDead === true) return false;
     if (state.targetStaminaPotion?.available !== true) return false;
-    if (state.progression?.useTargetStaminaPotion === true) return true;
-    // Normal combat owns its own last-resort potion fallback. Progression may
-    // override that policy while enabled, but disabling Progression must not
-    // silently disable a globally allowed, target-authorized potion.
-    return this.config.progression?.enabled !== true;
+    // The always-on Progression coordinator owns the resource fallback order:
+    // loot -> Chapters -> target-authorized potion -> wait. It explicitly
+    // authorizes this action only after higher-priority sources are exhausted.
+    return state.progression?.useTargetStaminaPotion === true;
   }
 
   _shouldUseManaPotion(state) {
@@ -302,67 +372,30 @@ class StrategyEngine {
     return state.targetManaPotion.available === true || state.targetManaPotion.buyIfMissing === true;
   }
 
-  _canScanForTargetStaminaPotion() {
+  _canScanForTargetStaminaPotion(state = null) {
     const staminaPolicy = this.config.resources?.stamina || {};
     if (staminaPolicy.allowPotions !== true) return false;
-    if (this.config.progression?.enabled === true
-      && this.config.progression?.allowTargetPotionFallback !== true) return false;
-
-    const scan = this._scanParams();
+    const scan = this._scanParams(state);
     if (!scan) return false;
     const areaKeys = [scan.areaKey, scan.fallback?.areaKey].filter(Boolean);
     for (const areaKey of areaKeys) {
       const targets = Object.values(this.config.monsters?.maps?.[areaKey] || {});
       for (const target of targets) {
         const type = target?.staminaPotion;
-        if (!['small', 'large', 'full', 'adventure'].includes(type)) continue;
+        if (!['auto', 'small', 'large', 'full', 'adventure'].includes(type)) continue;
         if (target.enabled !== true || Number(target.targetDamage) <= 0) continue;
         if (target.unlimited !== true && Number(target.completedCount) >= Number(target.killCount)) continue;
-        if (Number(staminaPolicy.potionLimits?.[type]) <= 0) continue;
+        if (type === 'auto') {
+          if (!['small', 'large', 'full', 'adventure'].some(candidate => Number(staminaPolicy.potionLimits?.[candidate]) > 0)) continue;
+        } else if (Number(staminaPolicy.potionLimits?.[type]) <= 0) continue;
         return true;
       }
     }
     return false;
   }
 
-  _overflowScan(state) {
-    const overflow = state.overflow;
-    if (overflow?.active === true && state.currentTargetIsOverflow !== true) {
-      const primary = this.moduleRegistry.resolveArea(overflow.areaKey);
-      if (!primary || !overflow.monsterKey) return null;
-      const backup = this.moduleRegistry.resolveArea(overflow.backupAreaKey);
-      return {
-        action: 'SCAN',
-        params: {
-          ...primary,
-          preferredMonsterKey: overflow.monsterKey,
-          overflow: {
-            mode: overflow.mode,
-            amount: overflow.amount,
-          },
-          replaceCurrent: true,
-          fallback: backup && overflow.backupMonsterKey ? {
-            ...backup,
-            preferredMonsterKey: overflow.backupMonsterKey,
-            overflow: { mode: overflow.mode, amount: overflow.amount },
-            replaceCurrent: true,
-          } : null,
-        },
-        reason: `Stamina is above maximum; routing overflow to ${overflow.monsterKey}`,
-      };
-    }
-    if (overflow?.active !== true && state.currentTargetIsOverflow === true) {
-      const scan = this._scanParams();
-      return scan ? {
-        action: 'SCAN',
-        params: { ...scan, replaceCurrent: true },
-        reason: 'Stamina overflow ended; returning to the configured Module',
-      } : this._waitForConfiguredModule();
-    }
-    return null;
-  }
-
-  _scanParams() {
+  _scanParams(state = null) {
+    if (state?.objective?.scan) return state.objective.scan;
     return this.moduleRegistry.resolveScan(this.config.general);
   }
 
@@ -384,7 +417,22 @@ class StrategyEngine {
    * @returns {{ id: number, name: string, stamCost: number }}
    */
   _selectSkill(state) {
-    return this.attackPlanner.plan(state);
+    const objectiveAbilityId = Math.max(0, Math.trunc(Number(state.objectiveAbilityId) || 0));
+    if (objectiveAbilityId > 0) {
+      const skill = (state.abilities || []).find(candidate => Number(candidate.id) === objectiveAbilityId);
+      if (skill) {
+        return {
+          id: objectiveAbilityId,
+          name: String(skill.name || `Ability ${objectiveAbilityId}`),
+          kind: 'class-ability',
+          stamCost: Math.max(0, Number(skill.staminaCost) || 0),
+          requestStamCost: 1,
+          manaCost: Math.max(0, Number(skill.manaCost) || 0),
+          planning: { mode: 'objective', source: 'adventure-quest-ability', estimatedDamage: null },
+        };
+      }
+    }
+    return state.supportAbilitySkill || state.plannedDamageSkill || this.attackPlanner.plan(state);
   }
 }
 
