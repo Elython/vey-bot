@@ -223,6 +223,21 @@ class StrategyEngine {
             reason: `Using one ${state.targetStaminaPotion.name} because the configured target is not reachable with current Stamina`,
           };
         }
+        // A target-stamina requirement is a combat constraint, not a reason
+        // to strand the engine.  When the explicitly enabled Chapter fallback
+        // can still supply stamina, hand control to it before waiting.  The
+        // progression snapshot can mark Chapters unavailable after its
+        // configured/session/server limits are exhausted.
+        if (plan.source === 'insufficient-target-stamina' && this._shouldFarmEnergy(state)) {
+          return {
+            action: 'FARM',
+            params: {
+              reactionType: this.config.energyFarming?.reactionType || 'random',
+              maxPerSession: this.config.energyFarming?.maxPerSession || 500,
+            },
+            reason: `Target requires about ${plan.requiredStamina || 0} stamina; using Chapter fallback before waiting`,
+          };
+        }
         return {
           action: 'WAIT',
           params: {},
@@ -350,10 +365,12 @@ class StrategyEngine {
     // must never bypass the user's visible "Allow Chapter fallback" switch.
     if (this.config.progression?.allowChapterFallback !== true) return false;
     if (!this.config.energyFarming?.enabled) return false;
+    const chapterStep = state.progression?.staminaFlow?.steps?.chapters;
+    if (chapterStep && chapterStep.available !== true) return false;
     const threshold = this.config.energyFarming?.farmWhenStaminaBelow || 100;
     if ((state.stamina || 0) >= threshold) return false;
     const limit = this.config.energyFarming?.maxPerSession || 500;
-    if ((state.sessionEnergyFarmed || 0) >= limit) return false;
+    if ((state.sessionChaptersFarmed ?? state.sessionEnergyFarmed ?? 0) >= limit) return false;
     if ((state.farmedEnergy || 0) >= (state.farmedEnergyLimit || 1000)) return false;
     return true;
   }

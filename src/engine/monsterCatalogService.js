@@ -899,15 +899,15 @@ class MonsterCatalogService {
       const existing = this.getRecord(areaKey, key) || {};
       const observedTotal = Math.max(0, Number(monster.totalCount) || 0);
       const maxObservedCount = Math.max(observedTotal, Number(existing.maxObservedCount) || 0);
-      let bossEvidence = monster.bossEvidence
-        || (monster.boss === true ? 'server' : null)
-        || existing.bossEvidence
-        || (existing.boss === true ? 'legacy' : null);
-      if (monster.phase) bossEvidence = null;
-      else {
-        if (bossEvidence === 'singleton' && observedTotal > 1) bossEvidence = null;
-        if (!bossEvidence && observedTotal === 1) bossEvidence = 'singleton';
-      }
+      // A live observation is authoritative for the current row.  In
+      // particular, do not resurrect a remembered boss flag: a normal mob can
+      // temporarily be the only surviving instance and the old singleton
+      // heuristic incorrectly labelled it as a boss.  Bosses must be backed by
+      // the server/auto-summon evidence (or the explicit dungeon location
+      // context); remembered rows are still retained when absent from a page.
+      const bossEvidence = monster.phase
+        ? null
+        : (monster.bossEvidence || (monster.boss === true ? 'server' : null));
       monster.maxObservedCount = maxObservedCount;
       monster.totalCount = Math.max(observedTotal, maxObservedCount);
       monster.bossEvidence = bossEvidence;
@@ -1029,8 +1029,10 @@ class MonsterCatalogService {
           current.bossEvidence = null;
         }
         else {
-          current.boss = Boolean(current.boss || record.boss);
-          current.bossEvidence = current.bossEvidence || record.bossEvidence || null;
+          // The current page decides whether this live type is a boss.  Keep
+          // remembered metadata only for rows that are not currently visible.
+          current.boss = Boolean(current.boss);
+          current.bossEvidence = current.bossEvidence || null;
         }
         current.totalCount = Math.max(Number(current.totalCount) || 0, Number(record.maxObservedCount) || 0);
         current.maxObservedCount = current.totalCount;

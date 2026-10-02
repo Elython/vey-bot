@@ -700,9 +700,35 @@ function parseActiveBuffs(html) {
 }
 
 function parseStatsPage(html) {
-  const stats = parseTopbar(html);
-  for (const [key, id] of [['attack', 'v-attack'], ['defense', 'v-defense'], ['maxStamina', 'v-stamina']]) {
-    const match = html.match(new RegExp(`id=["']${id}["'][^>]*>\\s*([\\d,]+)`, 'i'));
+  const source = String(html || '');
+  const stats = parseTopbar(source);
+
+  // The attributes page no longer exposes the old v-attack/v-defense/v-stamina
+  // ids. It now publishes a small JSON state contract and repeats the values
+  // in data-value elements. Only those current contracts are accepted.
+  const readNumber = (...values) => {
+    for (const value of values) {
+      const parsed = parseNumber(value);
+      if (parsed !== null) return parsed;
+    }
+    return null;
+  };
+  const stateMatch = source.match(/<script\b[^>]*id=["']stats-state["'][^>]*>([\s\S]*?)<\/script>/i);
+  if (stateMatch) {
+    try {
+      const payload = JSON.parse(decodeHtml(stateMatch[1]).trim());
+      const user = payload?.user || {};
+      const core = payload?.core || {};
+      stats.attack = stats.attack ?? readNumber(user.ATTACK, core.attack, core.permanent_attack);
+      stats.defense = stats.defense ?? readNumber(user.DEFENSE, core.defense, core.permanent_defense);
+      stats.maxStamina = stats.maxStamina ?? readNumber(user.MAX_STAMINA, core.stamina);
+    } catch {
+      // Fall through to the visible data-value markup below.
+    }
+  }
+  for (const [key, dataValue] of [['attack', 'attack'], ['defense', 'defense'], ['maxStamina', 'stamina']]) {
+    if (stats[key] !== undefined && stats[key] !== null) continue;
+    const match = source.match(new RegExp(`data-value=["']${dataValue}["'][^>]*>\\s*([\\d,]+)`, 'i'));
     if (match) stats[key] = parseNumber(match[1]);
   }
   return stats;

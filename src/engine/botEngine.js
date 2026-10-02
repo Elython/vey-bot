@@ -70,6 +70,7 @@ class BotEngine extends EventEmitter {
     this.lastStatsRefresh = 0;
     this.statsRefreshPromise = null;
     this.farmCycleId = null;
+    this.chapterFallbackBlockedUntil = 0;
     this.consecutiveErrors = 0;
     this.currentTarget = null;
     this.currentAction = null;
@@ -133,6 +134,10 @@ class BotEngine extends EventEmitter {
       damageDealt: 0,
       xpGained: 0,
       energyFarmed: 0,
+      // Chapter reactions and the +2 Stamina reward are different server
+      // counters.  Keep both so a 500-reaction limit cannot be reached after
+      // only 250 reactions by comparing against the stamina amount.
+      chaptersFarmed: 0,
       healthPotionsUsed: 0,
       staminaPotionsUsed: { small: 0, large: 0, full: 0, adventure: 0 },
       manaPotionsUsed: { small: 0, large: 0 },
@@ -462,6 +467,8 @@ class BotEngine extends EventEmitter {
       if (this.farmCycleId !== null && cycleId !== this.farmCycleId) {
         this.chapterFarmer.resetCycle();
         this.stats.energyFarmed = 0;
+        this.stats.chaptersFarmed = 0;
+        this.chapterFallbackBlockedUntil = 0;
         this.log('INFO', 'A new 12-hour farming cycle was detected. Session chapter tracking was reset.');
       }
       this.farmCycleId = cycleId;
@@ -847,6 +854,7 @@ class BotEngine extends EventEmitter {
       isJoined: Boolean(battle?.isJoined),
       farmedEnergy: stored.farmedEnergy ?? this.stats.energyFarmed,
       sessionEnergyFarmed: this.stats.energyFarmed,
+      sessionChaptersFarmed: this.stats.chaptersFarmed,
       farmedEnergyLimit: 1000,
       targetReached: Boolean(
         this.currentTarget?.targetDamage > 0 &&
@@ -1685,12 +1693,15 @@ class BotEngine extends EventEmitter {
   }
 
   _availableRewardChapters() {
+    if (this.chapterFallbackBlockedUntil > Date.now()) return 0;
     const targets = this.getMangaTargets(this.accountName) || [];
     const configuredRemaining = targets.reduce((total, manga) =>
       total + Math.max(0, Number(manga.chapters || 0) - Number(manga.farmedCount || 0)), 0);
     const farmedReward = Math.max(0, Number(stateStore.getState().farmedEnergy) || 0);
     const rewardRemaining = Math.floor(Math.max(0, 1000 - farmedReward) / 2);
-    return Math.max(0, Math.min(configuredRemaining, rewardRemaining));
+    const sessionLimit = Math.max(0, Number(this.config.energyFarming?.maxPerSession) || 500);
+    const sessionRemaining = Math.max(0, sessionLimit - (this.stats.chaptersFarmed || 0));
+    return Math.max(0, Math.min(configuredRemaining, rewardRemaining, sessionRemaining));
   }
 
   async _refreshProgressionLoot(force = false) {
@@ -2773,12 +2784,21 @@ class BotEngine extends EventEmitter {
       this._transition(BotState.IDLE, result.message);
       return result;
     }
+    const sessionLimit = Math.max(1, Number(params?.maxPerSession || this.config.energyFarming?.maxPerSession) || 500);
+    if ((this.stats.chaptersFarmed || 0) >= sessionLimit) {
+      this.chapterFallbackBlockedUntil = Date.now() + 30000;
+      const result = { success: false, skipped: true, message: 'Chapter fallback session limit reached' };
+      this.lastResult = result;
+      this._transition(BotState.IDLE, result.message);
+      return result;
+    }
     this._transition(BotState.FARMING_ENERGY, 'Stamina below configured threshold');
     const targets = this.getMangaTargets(this.accountName) || [];
     const target = targets
       .filter(manga => (manga.chapters || 0) > (manga.farmedCount || 0))
       .sort((left, right) => (left.farmedCount || 0) - (right.farmedCount || 0))[0];
     if (!target) {
+      this.chapterFallbackBlockedUntil = Date.now() + 30000;
       this.lastResult = { success: false, message: 'No unfarmed manga chapters are configured' };
       this._transition(BotState.IDLE, this.lastResult.message);
       return this.lastResult;
@@ -2803,6 +2823,8 @@ class BotEngine extends EventEmitter {
       throw error;
     }
     if (result.success) {
+      this.chapterFallbackBlockedUntil = 0;
+      this.stats.chaptersFarmed += 1;
       this.stats.energyFarmed += 2;
       const stored = stateStore.getState();
       const current = stored.farmedEnergy || 0;
@@ -2829,6 +2851,8 @@ class BotEngine extends EventEmitter {
       });
       await this.gameReader.fetchFarmedEnergy(target.slug, chapter);
     } else if (result.duplicate) {
+      this.chapterFallbackBlockedUntil = 0;
+      this.stats.chaptersFarmed += 1;
       this.onChapterFarmed(this.accountName, target.slug, {
         chapter,
         automatic: true,
@@ -2836,6 +2860,11 @@ class BotEngine extends EventEmitter {
         message: result.message || 'Chapter was already processed',
       });
       this.log('WARN', 'Skipped a chapter already processed during this session.');
+    } else {
+      // A failed/empty chapter response must not suppress target-authorized
+      // potions indefinitely.  Give the chapter endpoint a short cooldown,
+      // then let the normal resource policy retry it on a later loop.
+      this.chapterFallbackBlockedUntil = Date.now() + 30000;
     }
     this._transition(BotState.IDLE, result.success ? 'Chapter reaction completed' : result.message);
     return result;

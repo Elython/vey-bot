@@ -296,7 +296,13 @@ class AccountDatabase {
       const existing = account.monsterKnowledge.types[identity] || normalized;
       const aliases = new Set([...(existing.aliases || []), ...(normalized.aliases || []), existing.canonicalName].filter(Boolean));
       const phase = Number(normalized.phase) || Number(existing.phase) || null;
-      const boss = phase ? false : Boolean(existing.boss || normalized.boss);
+      // Stable account memory must not turn a currently observed ordinary mob
+      // back into a boss.  The catalog supplies explicit server/auto-summon
+      // evidence for the current page; remembered boss metadata is only used
+      // for rows that are not present in the current observation.
+      const boss = normalized.runtimePhase === true
+        ? (phase ? false : Boolean(existing.boss))
+        : (phase ? false : normalized.boss === true);
       const next = {
         ...existing,
         ...normalized,
@@ -304,7 +310,11 @@ class AccountDatabase {
         aliases: [...aliases].slice(0, 20),
         phase,
         boss,
-        bossEvidence: phase ? null : (normalized.bossEvidence || existing.bossEvidence || null),
+        bossEvidence: phase
+          ? null
+          : (normalized.runtimePhase === true
+            ? (normalized.bossEvidence || existing.bossEvidence || null)
+            : (normalized.bossEvidence || null)),
         maxObservedCount: Math.max(Number(existing.maxObservedCount) || 0, Number(normalized.maxObservedCount) || 0),
         firstSeenAt: existing.firstSeenAt || normalized.firstSeenAt,
         lastSeenAt: observedAt,

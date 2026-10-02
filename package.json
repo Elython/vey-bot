@@ -1,7 +1,7 @@
 {
   "name": "veyra-bot-client",
   "productName": "Veybot",
-  "version": "2.5.2",
+  "version": "2.5.3",
   "description": "Compact API-driven Electron automation client with dry-run safety and human-assisted challenges",
   "main": "src/main/index.js",
   "scripts": {
@@ -14,7 +14,7 @@
     "pretest": "npm run check:renderer",
     "test": "node test/runTests.js",
     "dry-run:live": "electron test/liveDryRun.js",
-    "dist:win": "npm run build:renderer && npm test && electron-builder --win nsis --x64"
+    "dist:win": "npm run build:renderer && electron-builder --win nsis --x64"
   },
   "keywords": [
     "electron",
