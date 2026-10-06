@@ -2230,7 +2230,7 @@ class BotEngine extends EventEmitter {
       preferredTargets: objective?.targets || null,
       targetDamage: objective?.targetDamage > 0
         ? Number(objective.targetDamage)
-        : Number.MAX_SAFE_INTEGER,
+        : (objective ? Number.MAX_SAFE_INTEGER : undefined),
       configuredTargets,
       targetKeyResolver: targetNamespace === 'boss_hunt' ? bossTargetKey : null,
     });

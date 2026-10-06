@@ -49,6 +49,9 @@ class TargetLedger {
     const preferredMonsterKey = String(options.preferredMonsterKey || '');
     if (preferredMonsterKey) {
       const base = configured[preferredMonsterKey] || {};
+      if (!(Number(options.targetDamage) > 0)) {
+        return selectGateMonster(monsters, { [preferredMonsterKey]: base }, nowEpoch, { targetKeyResolver });
+      }
       return selectGateMonster(monsters, {
         [preferredMonsterKey]: {
           ...base,

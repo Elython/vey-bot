@@ -11,7 +11,7 @@ const ACTION_PARAM_VALIDATORS = Object.freeze({
   ADV_QUEST_FINISH: params => /^\d{1,12}$/.test(String(params.questId || '')),
   ADV_QUEST_GIVE_UP: params => /^\d{1,12}$/.test(String(params.questId || '')),
   WAIT: () => true,
-  SCAN: params => typeof params.areaKey === 'string' && params.areaKey.length > 0
+  SCAN: params => params.kind === 'boss_hunt' || (typeof params.areaKey === 'string' && params.areaKey.length > 0
     && (params.kind === 'dungeon' || (
       params.kind === 'event'
       && Number.isInteger(params.eventId) && params.eventId > 0
@@ -20,7 +20,7 @@ const ACTION_PARAM_VALIDATORS = Object.freeze({
       (params.kind === undefined || params.kind === 'gate')
       && Number.isInteger(params.gateId) && params.gateId > 0
       && Number.isInteger(params.wave) && params.wave > 0
-    )),
+    ))),
   ATTACK: params => params.skill && typeof params.skill === 'object'
     && Number.isFinite(Number(params.skill.id))
     && Number.isFinite(Number(params.skill.stamCost))
