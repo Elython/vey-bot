@@ -1,15 +1,19 @@
 const EventEmitter = require('events');
+const { isDeepStrictEqual } = require('util');
 const { BotFSM, BotState } = require('./fsm');
 const { stateStore } = require('./stateStore');
 const { deepMerge, validateConfig } = require('./configManager');
 const { ActionExecutor, MUTATING_ACTIONS } = require('./actionExecutor');
 const { ModuleRegistry } = require('./moduleRegistry');
+const { bossTargetKey, configuredBossAreas } = require('./bossHunt');
 const { TargetLedger } = require('./targetLedger');
 const { LootLimitLedger } = require('./lootLimitLedger');
 const { ProgressionAction } = require('./progressionEngine');
 const { getMonsterArea, monsterTypeKey } = require('./monsterCatalog');
 const { ReadPriority } = require('./worldState');
 const { isAutoFarmAttackLockMessage } = require('./autoFarmService');
+const { staminaMinimumAmount } = require('./resourcePolicyEngine');
+const { nextUnfarmedChapter } = require('./chapterCatalog');
 
 function parseCompactAmount(value) {
   const match = String(value ?? '').trim().replace(/,/g, '').match(/^([\d.]+)\s*([kmb])?$/i);
@@ -22,6 +26,26 @@ function targetProgressDamage(target, battle) {
   const total = Math.max(0, Number(battle?.userDamage ?? target?.userDmg) || 0);
   const baseline = Number(target?.phaseDamageBaseline);
   return Number.isFinite(baseline) ? Math.max(0, total - Math.max(0, baseline)) : total;
+}
+
+function isActiveDungeonCombat(target, battle) {
+  return target?.isDungeon === true && Boolean(battle) && battle.isDead !== true;
+}
+
+function shouldRefreshProgressionLoot({
+  progressionReadWindow,
+  activeDungeonCombat,
+  hasSnapshot,
+  batchActive,
+  batchCandidateCount,
+}) {
+  if (!progressionReadWindow) return false;
+  if (batchActive && batchCandidateCount > 0) return false;
+  // Progression may need one authoritative snapshot when Stamina first crosses
+  // its reserve. Once that snapshot exists, do not repeatedly stop a live
+  // first-come-first-served Dungeon battle to rescan historical loot areas.
+  if (activeDungeonCombat && hasSnapshot) return false;
+  return true;
 }
 
 class BotEngine extends EventEmitter {
@@ -60,6 +84,7 @@ class BotEngine extends EventEmitter {
     this.windowManager = dependencies.windowManager || null;
     this.chapterFarmer = dependencies.chapterFarmer;
     this.getMangaTargets = dependencies.getMangaTargets || (() => []);
+    this.onChapterCycleReset = dependencies.onChapterCycleReset || (() => {});
     this.onChapterFarmed = dependencies.onChapterFarmed || (() => {});
 
     this.fsm = new BotFSM(BotState.STOPPED);
@@ -75,6 +100,13 @@ class BotEngine extends EventEmitter {
     this.currentTarget = null;
     this.currentAction = null;
     this.currentReason = null;
+    this.runtimeStatus = {
+      kind: 'stopped',
+      code: 'not_started',
+      title: 'Bot stopped',
+      detail: 'Choose a module and press Start.',
+      since: Date.now(),
+    };
     this.lastResult = null;
     this.currentLoadoutSnapshot = null;
     this.currentCombatContext = null;
@@ -91,6 +123,7 @@ class BotEngine extends EventEmitter {
     this.appliedLoadoutSelections = { gear: null, pets: null };
     this.progressionLootBatchActive = false;
     this.progressionLootBatchConfig = null;
+    this.progressionLootBatchStartLevel = null;
     this.progressionLootRefreshPending = false;
     this.pendingMutation = null;
     this.autoFarmSynchronized = false;
@@ -141,6 +174,7 @@ class BotEngine extends EventEmitter {
       healthPotionsUsed: 0,
       staminaPotionsUsed: { small: 0, large: 0, full: 0, adventure: 0 },
       manaPotionsUsed: { small: 0, large: 0 },
+      deaths: 0,
       errors: 0,
       startTime: null,
     };
@@ -164,6 +198,50 @@ class BotEngine extends EventEmitter {
       level,
       message,
     });
+  }
+
+  _setRuntimeStatus(kind, title, detail, code = kind) {
+    const normalized = {
+      kind: String(kind || 'active'),
+      code: String(code || kind || 'active'),
+      title: String(title || 'Working'),
+      detail: String(detail || title || 'Working'),
+    };
+    const previous = this.runtimeStatus || {};
+    const unchanged = previous.kind === normalized.kind
+      && previous.code === normalized.code
+      && previous.title === normalized.title
+      && previous.detail === normalized.detail;
+    this.runtimeStatus = {
+      ...normalized,
+      since: unchanged ? previous.since : Date.now(),
+    };
+    if (!unchanged) this.emit('telemetry', this.getTelemetry());
+    return this.runtimeStatus;
+  }
+
+  _setDecisionRuntimeStatus(decision) {
+    const action = String(decision?.action || '').toUpperCase();
+    const reason = decision?.reason || 'Waiting for the next decision.';
+    const labels = {
+      ATTACK: ['active', 'Attacking', 'attack'],
+      JOIN: ['active', 'Joining battle', 'join'],
+      SCAN: ['scanning', 'Finding a target', 'target_scan'],
+      LOOT: ['active', 'Looting', 'loot'],
+      CLAIM_LOOT: ['active', 'Looting for Progression', 'progression_loot'],
+      CLAIM_OBJECTIVE_LOOT: ['active', 'Looting for objective', 'objective_loot'],
+      HEAL: ['active', 'Healing', 'heal'],
+      FARM: ['active', 'Farming Chapters', 'chapter_farm'],
+      APPLY_LOADOUT: ['active', 'Applying loadout', 'loadout'],
+      USE_STAMINA_POTION: ['active', 'Using Stamina potion', 'stamina_potion'],
+      USE_MANA_POTION: ['active', 'Using Mana potion', 'mana_potion'],
+      AUTO_FARM_START: ['active', 'Starting Auto Farm', 'auto_farm'],
+      MONSTER_PHASE_DUEL: ['active', 'Phase PvP running', 'phase_pvp'],
+      WAIT: ['waiting', 'Waiting', 'wait'],
+      STOP: ['stopped', 'Bot stopped', 'policy_stop'],
+    };
+    const [kind, title, code] = labels[action] || ['active', action || 'Working', 'action'];
+    this._setRuntimeStatus(kind, title, reason, code);
   }
 
   _resetProgressionLootSnapshot() {
@@ -203,12 +281,13 @@ class BotEngine extends EventEmitter {
       this.objectivePreparedLootKeys.clear();
       this.objectiveRejectedMonsterKeys.clear();
     }
-    if ((patch.general || patch.looting || patch.progression) && !this.progressionLootBatchActive) {
+    const progressionLootInputsChanged = Boolean(patch.looting || patch.progression);
+    if (progressionLootInputsChanged && !this.progressionLootBatchActive) {
       this._resetProgressionLootSnapshot();
       this.progressionLootBatchActive = false;
       this.progressionLootBatchConfig = null;
       this.progressionLootRefreshPending = false;
-    } else if ((patch.general || patch.looting || patch.progression) && this.progressionLootBatchActive) {
+    } else if (progressionLootInputsChanged && this.progressionLootBatchActive) {
       this.progressionLootRefreshPending = true;
       this.log('INFO', 'Progression settings changed; the active verified claim batch remains locked until it finishes or the bot is paused.');
     }
@@ -246,9 +325,15 @@ class BotEngine extends EventEmitter {
     return this.config;
   }
 
-  replaceConfig(config) {
+  replaceConfig(config, options = {}) {
     const previousModule = this.config.general?.module;
+    const previousProgression = this.config.progression;
+    const previousLooting = this.config.looting;
     this.config = this.configManager ? this.configManager.replace(config) : validateConfig(config);
+    const progressionLootInputsChanged = !isDeepStrictEqual(previousProgression, this.config.progression)
+      || !isDeepStrictEqual(previousLooting, this.config.looting);
+    const preserveProgressionSnapshot = options.preserveProgressionSnapshot === true
+      && !progressionLootInputsChanged;
     this.strategy.updateConfig(this.config);
     this.targetLedger.updateConfig(this.config);
     this.lootLimitLedger.updateConfig(this.config);
@@ -258,12 +343,12 @@ class BotEngine extends EventEmitter {
     this.objectiveClaimedKeys.clear();
     this.objectivePreparedLootKeys.clear();
     this.objectiveRejectedMonsterKeys.clear();
-    if (!this.progressionLootBatchActive) {
+    if (!preserveProgressionSnapshot && !this.progressionLootBatchActive) {
       this._resetProgressionLootSnapshot();
       this.progressionLootBatchActive = false;
       this.progressionLootBatchConfig = null;
       this.progressionLootRefreshPending = false;
-    } else {
+    } else if (!preserveProgressionSnapshot) {
       this.progressionLootRefreshPending = true;
       this.log('INFO', 'The loaded preset will apply to Progression after the active verified claim batch finishes or the bot is paused.');
     }
@@ -307,11 +392,12 @@ class BotEngine extends EventEmitter {
     });
   }
 
-  start() {
+  start(options = {}) {
     if (this.isRunning || this.loopPromise) return false;
     this.isRunning = true;
     this.isPaused = false;
     this.consecutiveErrors = 0;
+    this.stats.deaths = 0;
     this.stats.startTime = Date.now();
     const runController = new AbortController();
     this.runController = runController;
@@ -320,7 +406,7 @@ class BotEngine extends EventEmitter {
     this.failedManaPotionIds.clear();
     this.objectivePreparedLootKeys.clear();
     this.objectiveRejectedMonsterKeys.clear();
-    this._resetProgressionLootSnapshot();
+    if (options.preserveProgressionSnapshot !== true) this._resetProgressionLootSnapshot();
     this.progressionLootBatchActive = false;
     this.progressionLootBatchConfig = null;
     this.progressionLootRefreshPending = false;
@@ -328,6 +414,9 @@ class BotEngine extends EventEmitter {
     this.autoFarmSynchronized = false;
     this.autoFarmPveCleared = false;
     this.abilityTurnState = { battleKey: null, attackTurn: 0, usedAtTurn: {}, useCounts: {} };
+    this.currentAction = 'START';
+    this.currentReason = 'Starting automation';
+    this._setRuntimeStatus('active', 'Starting', this.currentReason, 'starting');
     this.fsm.transition(BotState.IDLE, 'Started by user');
     this.log('INFO', `API bot started${this.config.safety.dryRun ? ' in DRY-RUN mode' : ''}.`);
     const loopPromise = this._mainLoop(runController.signal)
@@ -338,6 +427,9 @@ class BotEngine extends EventEmitter {
         this.pendingMutation = null;
         this.stats.errors++;
         this.lastResult = { success: false, error: error.message, code: error.code || 'UNKNOWN' };
+        this.currentAction = 'STOP';
+        this.currentReason = `Unexpected engine error: ${error.message}`;
+        this._setRuntimeStatus('error', 'Bot stopped after an error', this.currentReason, 'engine_error');
         this.log('ERROR', `Bot loop stopped after an unexpected error: ${error.message}`);
         if (!this.fsm.is(BotState.STOPPED)) {
           this.fsm.transition(BotState.STOPPED, 'Engine loop failed');
@@ -370,6 +462,9 @@ class BotEngine extends EventEmitter {
     this.progressionLootRefreshPending = false;
     this.currentProgressionDecision = null;
     this.currentObjectiveState = null;
+    this.currentAction = 'PAUSE';
+    this.currentReason = reason;
+    this._setRuntimeStatus('paused', 'Bot paused', reason, 'paused');
     if (this.autoFarmServerEnabled) this._requestAutoFarmPause('Bot paused');
     this.autoFarmSynchronized = false;
     this.autoFarmPveCleared = false;
@@ -389,11 +484,14 @@ class BotEngine extends EventEmitter {
     this.isPaused = false;
     if (this.config.general?.module === 'auto_farm') this.autoFarmSynchronized = false;
     this.autoFarmPveCleared = false;
+    this.currentAction = 'RESUME';
+    this.currentReason = 'Resuming automation';
+    this._setRuntimeStatus('active', 'Resuming', this.currentReason, 'resuming');
     this.fsm.transition(BotState.IDLE, 'Resumed by user');
     return true;
   }
 
-  stop() {
+  stop(reason = 'Stopped by user', code = 'user_stop') {
     const wasRunning = this.isRunning || Boolean(this.loopPromise);
     this.isRunning = false;
     this.isPaused = false;
@@ -403,7 +501,8 @@ class BotEngine extends EventEmitter {
     this.battleManager.clear();
     this.currentTarget = null;
     this.currentCombatContext = null;
-    this.currentAction = null;
+    this.currentAction = 'STOP';
+    this.currentReason = reason;
     this.currentProgressionDecision = null;
     this.progressionLootBatchActive = false;
     this.progressionLootBatchConfig = null;
@@ -414,7 +513,8 @@ class BotEngine extends EventEmitter {
     this.autoFarmPveCleared = false;
     this.monsterPhaseDuelState = null;
     this.windowManager?.destroyMonsterPhasePvpWatcher?.(this.accountName);
-    if (!this.fsm.is(BotState.STOPPED)) this.fsm.transition(BotState.STOPPED, 'Stopped by user');
+    this._setRuntimeStatus('stopped', 'Bot stopped', reason, code);
+    if (!this.fsm.is(BotState.STOPPED)) this.fsm.transition(BotState.STOPPED, reason);
     return wasRunning;
   }
 
@@ -464,12 +564,15 @@ class BotEngine extends EventEmitter {
       const epoch = stats.serverEpoch ?? Math.floor(Date.now() / 1000);
       const offset = stats.serverTzOff ?? 19800;
       const cycleId = Math.floor((epoch + offset) / (12 * 60 * 60));
-      if (this.farmCycleId !== null && cycleId !== this.farmCycleId) {
+      if (cycleId !== this.farmCycleId) {
         this.chapterFarmer.resetCycle();
         this.stats.energyFarmed = 0;
         this.stats.chaptersFarmed = 0;
         this.chapterFallbackBlockedUntil = 0;
-        this.log('INFO', 'A new 12-hour farming cycle was detected. Session chapter tracking was reset.');
+        this.onChapterCycleReset(this.accountName, cycleId);
+        if (this.farmCycleId !== null) {
+          this.log('INFO', 'A new 12-hour farming cycle was detected. Session chapter tracking was reset.');
+        }
       }
       this.farmCycleId = cycleId;
       this.emit('telemetry', this.getTelemetry());
@@ -490,6 +593,7 @@ class BotEngine extends EventEmitter {
       state: this.fsm.state,
       currentAction: this.currentAction,
       currentReason: this.currentReason,
+      runtimeStatus: { ...this.runtimeStatus },
       module: this.moduleRegistry.describe(this.config.general),
       target: this.currentTarget ? {
         ...this.currentTarget,
@@ -595,6 +699,9 @@ class BotEngine extends EventEmitter {
         const liveState = await this.gameReader.readState();
         if (!this.isRunning || signal.aborted) break;
         if (!liveState.isConnected) {
+          this.currentAction = 'WAIT';
+          this.currentReason = 'Waiting for the authenticated game browser session';
+          this._setRuntimeStatus('blocked', 'Game session unavailable', this.currentReason, 'game_disconnected');
           this.log('WARN', 'Waiting for the game browser session...');
           await this.timingEngine.sleepRandom(1500, 3000, signal);
           continue;
@@ -610,13 +717,29 @@ class BotEngine extends EventEmitter {
         }
         if (liveState.isLoginPage) {
           this.log('ERROR', 'Game session is no longer authenticated. Bot stopped.');
-          this.stop();
+          this.stop('Game session is no longer authenticated', 'authentication_expired');
           break;
         }
 
-        if (Date.now() - this.lastStatsRefresh > 30000) await this.refreshStats();
+        const maxDeaths = Math.max(0, Math.trunc(Number(this.config.resources?.health?.maxDeaths) || 0));
+        if (maxDeaths > 0 && this.stats.deaths >= maxDeaths) {
+          const reason = `Maximum deaths reached (${this.stats.deaths}/${maxDeaths})`;
+          this.log('WARN', `${reason}. Bot stopped.`);
+          this.stop(reason, 'max_deaths');
+          break;
+        }
+
+        const loadedBattle = this.battleManager.getCurrentBattle();
+        const activeDungeonCombat = isActiveDungeonCombat(this.currentTarget, loadedBattle);
+        // damage.php is authoritative for Stamina, HP, Mana, and XP while a
+        // Dungeon battle is active. Defer the much slower full Stats read until
+        // the battle boundary so it cannot interrupt a 0.05s Dungeon schedule.
+        if (Date.now() - this.lastStatsRefresh > 30000 && !activeDungeonCombat) {
+          this._setRuntimeStatus('scanning', 'Refreshing account stats', 'Reading the latest account resources before the next decision.', 'stats_refresh');
+          await this.refreshStats();
+        }
         if (!this.isRunning || signal.aborted) break;
-        if (this.currentTarget && this.battleManager.getCurrentBattle()) {
+        if (this.currentTarget && loadedBattle) {
           await Promise.all([this._prepareCombatContext(), this._prepareClassSkills()]);
           if (!this.isRunning || signal.aborted) break;
         }
@@ -637,13 +760,13 @@ class BotEngine extends EventEmitter {
         if (!autoFarmModule && hardStopPercent > 0 && currentStaminaPercent !== null
           && currentStaminaPercent < hardStopPercent) {
           this.currentReason = `Stamina is ${currentStaminaPercent.toFixed(1)}%, below the ${hardStopPercent}% hard stop`;
-          this._stopFromPolicy();
+          this._stopFromPolicy('stamina_hard_stop');
           break;
         }
         const dungeonPriorityModule = this.config.general?.module === 'dungeons';
         const progressionReadThreshold = Math.max(
           0,
-          Number(this.config.combat?.staminaReserve) || 0,
+          staminaMinimumAmount(this.config, gameState),
           this.config.energyFarming?.enabled === true
             ? (Number(this.config.energyFarming?.farmWhenStaminaBelow) || 0)
             : 0,
@@ -652,9 +775,24 @@ class BotEngine extends EventEmitter {
           ? (!gameState.currentBattle || gameState.monsterDead)
           : (Number(gameState.stamina) <= progressionReadThreshold
             || (gameState.monsterDead && gameState.isDungeon !== true));
+        const refreshProgressionLoot = shouldRefreshProgressionLoot({
+          progressionReadWindow,
+          activeDungeonCombat: gameState.isDungeon === true
+            && Boolean(gameState.currentBattle)
+            && gameState.monsterDead !== true,
+          hasSnapshot: this.progressionLootSnapshot.refreshedAt > 0,
+          batchActive: this.progressionLootBatchActive,
+          batchCandidateCount: this.progressionLootSnapshot.candidates.length,
+        });
         if (!autoFarmModule && !objectiveModule && this.config.progression?.useLootForLeveling === true
-          && progressionReadWindow
-          && !(this.progressionLootBatchActive && this.progressionLootSnapshot.candidates.length > 0)) {
+          && refreshProgressionLoot) {
+          const sourceCount = this._progressionAreaKeys().length;
+          this._setRuntimeStatus(
+            'scanning',
+            'Checking progression loot',
+            `Reviewing ${sourceCount} enabled loot area${sourceCount === 1 ? '' : 's'} before deciding how to spend Stamina.`,
+            'progression_scan',
+          );
           await this._refreshProgressionLoot(gameState.monsterDead === true);
           if (!this.isRunning || signal.aborted) break;
         }
@@ -694,10 +832,12 @@ class BotEngine extends EventEmitter {
         } else if (decision.action === 'CLAIM_LOOT' && !this.progressionLootBatchActive) {
           this.progressionLootBatchActive = true;
           this.progressionLootBatchConfig = JSON.parse(JSON.stringify(this.config));
+          this.progressionLootBatchStartLevel = Number.isFinite(Number(gameState.level)) ? Number(gameState.level) : null;
           this.progressionLootRefreshPending = false;
         }
         this.currentAction = decision.action;
         this.currentReason = decision.reason;
+        this._setDecisionRuntimeStatus(decision);
         this.log('INFO', `${decision.action}: ${decision.reason}`);
 
         if (!this.isRunning || signal.aborted) break;
@@ -737,7 +877,7 @@ class BotEngine extends EventEmitter {
         }
         if (error.code === 'AUTH_REQUIRED') {
           this.log('ERROR', 'Authentication expired. Bot stopped.');
-          this.stop();
+          this.stop('Authentication expired', 'authentication_expired');
           break;
         }
         if (error.code === 'AUTO_FARM_ACTIVE') {
@@ -750,6 +890,7 @@ class BotEngine extends EventEmitter {
             error: error.message,
           };
           this.currentReason = error.message;
+          this._setRuntimeStatus('blocked', 'Waiting for Auto Farm to stop', error.message, 'auto_farm_attack_lock');
           this.log('WARN', error.message);
           this.emit('telemetry', this.getTelemetry());
           try {
@@ -801,10 +942,13 @@ class BotEngine extends EventEmitter {
         this.consecutiveErrors++;
         this.stats.errors++;
         this.lastResult = { success: false, error: error.message, code: error.code || 'UNKNOWN' };
+        this.currentAction = 'WAIT';
+        this.currentReason = `Retrying after error ${this.consecutiveErrors}/${this.config.safety.maxConsecutiveErrors}: ${error.message}`;
+        this._setRuntimeStatus('error', 'Recovering from an error', this.currentReason, 'error_backoff');
         this.log('ERROR', `Engine error ${this.consecutiveErrors}/${this.config.safety.maxConsecutiveErrors}: ${error.message}`);
         if (this.consecutiveErrors >= this.config.safety.maxConsecutiveErrors) {
           this.log('ERROR', 'Maximum consecutive errors reached. Bot stopped.');
-          this.stop();
+          this.stop(`Maximum consecutive errors reached (${this.consecutiveErrors}/${this.config.safety.maxConsecutiveErrors}): ${error.message}`, 'max_errors');
           break;
         }
         try {
@@ -871,6 +1015,7 @@ class BotEngine extends EventEmitter {
       expRequired: stored.expRequired,
       targetStaminaPotion,
       targetManaPotion,
+      deaths: Math.max(0, Number(this.stats.deaths) || 0),
       currentLootAllowed: this.currentTarget?.objective?.requiresLoot === true
         || this.lootLimitLedger.isAllowed(this.currentTarget),
       autoFarmSynchronized: this.autoFarmSynchronized,
@@ -995,10 +1140,10 @@ class BotEngine extends EventEmitter {
     return { success: true, ended: true, winnerSide: state.winnerSide, rejoinRequired };
   }
 
-  _stopFromPolicy() {
+  _stopFromPolicy(code = 'resource_policy_stop') {
     const reason = this.currentReason || 'Hard resource stop reached';
     this.log('WARN', `${reason}. Bot stopped.`);
-    this.stop();
+    this.stop(reason, code);
     return { success: true, stopped: true, reason };
   }
 
@@ -1009,7 +1154,7 @@ class BotEngine extends EventEmitter {
     const policies = this.config.combat.abilityPolicies || {};
     const skills = (this.currentClassSkillTree?.unlockedSkills || [])
       .filter(skill => skill?.owned === true && !skill.passive && allowed.has(Number(skill.id)))
-      .map(skill => ({ skill, policy: policies[String(skill.id)] || { role: 'attack' } }))
+      .map(skill => ({ skill, policy: policies[String(skill.id)] || { role: 'select' } }))
       .filter(({ skill, policy }) => ['buff', 'debuff'].includes(policy.role)
         && this._abilityIsDue(skill, battle, policy.role)
         && Math.max(0, Number(nextAttackStamina) || 0) >= Math.max(0, Number(policy.minimumNextAttackStamina) || 0));
@@ -1047,9 +1192,9 @@ class BotEngine extends EventEmitter {
     if (!skill || skill.owned !== true || skill.passive === true) return false;
     const id = String(skill.id);
     const policy = this.config.combat?.abilityPolicies?.[id] || {};
-    const role = policy.role || 'attack';
+    const role = policy.role || 'select';
     if (expectedRole && role !== expectedRole) return false;
-    if (role === 'passive') return false;
+    if (role === 'passive' || role === 'select') return false;
     const turnState = this._ensureAbilityTurnState(battle);
     const uses = Math.max(0, Number(turnState.useCounts[id]) || 0);
     const maxUses = Math.max(0, Number(policy.maxUses) || 0);
@@ -1395,6 +1540,9 @@ class BotEngine extends EventEmitter {
   }
 
   _targetStaminaPotionState(battle) {
+    const stored = stateStore.getState();
+    const maxStamina = Math.max(0, Number(stored.stamina?.max) || 0);
+    const reserve = Math.ceil(maxStamina * Math.max(0, Number(this.config?.resources?.stamina?.keepMin) || 0) / 100);
     const selection = this.currentTarget?.staminaPotion;
     const types = ['small', 'large', 'full', 'adventure'];
     if (selection !== 'auto' && !types.includes(selection)) return null;
@@ -1403,6 +1551,8 @@ class BotEngine extends EventEmitter {
       ? [priority, ...types].filter((type, index, values) => types.includes(type) && values.indexOf(type) === index)
       : [selection];
     let lastReason = 'No allowed Stamina potion is available';
+    const refillOptions = [];
+    let selected = null;
     for (const type of ordered) {
       const item = (battle?.consumables?.items || []).find(candidate =>
         candidate.category === 'stamina'
@@ -1414,10 +1564,17 @@ class BotEngine extends EventEmitter {
       const used = Number(this.stats.staminaPotionsUsed?.[type]) || 0;
       const policy = this.resourcePolicyEngine?.canUseStaminaPotion(type, used);
       if (item && policy?.allowed) {
-        return { type, inventoryId: item.inventoryId, name: item.name || `${type} Stamina potion`, quantity: Number(item.quantity) || 0, available: true, reason: policy.reason || '' };
+        const usesRemaining = Math.min(Math.max(0, Number(item.quantity) || 0), Math.max(0, (Number(policy.limit) || 0) - (Number(policy.used) || 0)));
+        const restored = type === 'full' ? maxStamina
+          : type === 'small' ? 20
+            : type === 'large' ? Math.min(5000, maxStamina / 2)
+              : Math.max(0, Number(item.restoreAmount) || 0);
+        refillOptions.push({ type, usesRemaining, restored: Math.max(0, Math.min(maxStamina - reserve, restored)) });
+        if (!selected) selected = { type, inventoryId: item.inventoryId, name: item.name || `${type} Stamina potion`, quantity: Number(item.quantity) || 0, available: true, reason: policy.reason || '' };
       }
       lastReason = item ? (policy?.reason || lastReason) : `${type} Stamina potion is not present in the battle drawer`;
     }
+    if (selected) return { ...selected, refillStamina: refillOptions.reduce((sum, option) => sum + option.usesRemaining * option.restored, 0) };
     return { type: selection, inventoryId: null, name: selection === 'auto' ? 'Automatic Stamina potion' : `${selection} Stamina potion`, quantity: 0, available: false, reason: lastReason };
   }
 
@@ -1695,8 +1852,13 @@ class BotEngine extends EventEmitter {
   _availableRewardChapters() {
     if (this.chapterFallbackBlockedUntil > Date.now()) return 0;
     const targets = this.getMangaTargets(this.accountName) || [];
-    const configuredRemaining = targets.reduce((total, manga) =>
-      total + Math.max(0, Number(manga.chapters || 0) - Number(manga.farmedCount || 0)), 0);
+    const configuredRemaining = targets.reduce((total, manga) => {
+      const completed = new Set((manga.farmedChapterNumbers || []).map(Number));
+      const known = Array.isArray(manga.chapterEntries) && manga.chapterEntries.length > 0
+        ? manga.chapterEntries.map(entry => Number(entry.number)).filter(number => Number.isFinite(number) && number > 0)
+        : Array.from({ length: Math.max(0, Number(manga.chapters) || 0) }, (_, index) => index + 1);
+      return total + known.filter(chapter => !completed.has(chapter)).length;
+    }, 0);
     const farmedReward = Math.max(0, Number(stateStore.getState().farmedEnergy) || 0);
     const rewardRemaining = Math.floor(Math.max(0, 1000 - farmedReward) / 2);
     const sessionLimit = Math.max(0, Number(this.config.energyFarming?.maxPerSession) || 500);
@@ -2005,7 +2167,9 @@ class BotEngine extends EventEmitter {
   async _scan({
     kind = 'gate', gateId, eventId, wave, areaKey, ignoreInstanceId = null, fallback = null,
     preferredMonsterKey = null, objective = null, replaceCurrent = false,
+    monstersOverride = null, targetNamespace = null,
   }, signal) {
+    if (kind === 'boss_hunt') return this._scanBossHunt(signal);
     if (replaceCurrent) {
       this.battleManager.clear();
       this.currentTarget = null;
@@ -2025,7 +2189,9 @@ class BotEngine extends EventEmitter {
       isDungeon ? 'Discovering dungeon monsters' : isEvent ? `Event ${eventId}, wave ${wave}` : `Gate ${gateId}, wave ${wave}`,
     );
     let monsters;
-    if (this.targetDiscoveryService) {
+    if (Array.isArray(monstersOverride)) {
+      monsters = monstersOverride;
+    } else if (this.targetDiscoveryService) {
       try {
         monsters = await this.targetDiscoveryService.listCombatMonsters(areaKey, { signal });
       } catch (error) {
@@ -2056,14 +2222,21 @@ class BotEngine extends EventEmitter {
       monsters = (await this.gameAPI.getWaveMonsters(gateId, resolvedWave))
         .filter(monster => !this.ignoredTargetIds.has(String(monster.id || monster.battleId)));
     }
+    const configuredTargets = targetNamespace === 'boss_hunt'
+      ? this.config.bossHunt?.targets?.[areaKey] || {}
+      : null;
     let target = this.targetLedger.selectTarget(areaKey, monsters, undefined, {
       preferredMonsterKey,
       preferredTargets: objective?.targets || null,
       targetDamage: objective?.targetDamage > 0
         ? Number(objective.targetDamage)
         : Number.MAX_SAFE_INTEGER,
+      configuredTargets,
+      targetKeyResolver: targetNamespace === 'boss_hunt' ? bossTargetKey : null,
     });
-    if (!target && !objective) target = await this._probePhaseDuelTarget(areaKey, monsters, signal);
+    if (!target && !objective && targetNamespace !== 'boss_hunt') {
+      target = await this._probePhaseDuelTarget(areaKey, monsters, signal);
+    }
     if (!target) {
       if (fallback) {
         this.log('INFO', `No eligible Targets in ${areaKey}; using configured Gate fallback.`);
@@ -2086,7 +2259,9 @@ class BotEngine extends EventEmitter {
       maxHp: target.maxHp,
       userDmg: target.userDmg || 0,
       areaKey,
-      monsterKey: target.monsterKey,
+      monsterKey: target.catalogMonsterKey || target.monsterKey,
+      configKey: target.monsterKey,
+      policyNamespace: targetNamespace,
       targetDamage: target.targetSettings.targetDamage,
       minimumHp: target.targetSettings.minimumHp,
       priority: target.targetSettings.priority,
@@ -2137,6 +2312,59 @@ class BotEngine extends EventEmitter {
     this._transition(battle.isJoined ? BotState.ATTACKING : BotState.JOINING_BATTLE, target.name);
     this.lastResult = { success: true, target: this.currentTarget };
     return this.lastResult;
+  }
+
+  async _scanBossHunt(signal) {
+    const areas = configuredBossAreas(this.config);
+    this._transition(BotState.SCANNING_GATES, 'Discovering configured bosses across Gates and Events');
+    if (areas.length === 0) {
+      this.battleManager.clear();
+      this.currentTarget = null;
+      this.currentCombatContext = null;
+      return this._wait('No enabled Boss Hunt targets are configured', signal);
+    }
+    const maxAgeMs = Math.max(
+      15_000,
+      Math.max(1, Number(this.config.scheduler?.targetScanIntervalSeconds) || 1) * 1000,
+    );
+    const settled = await Promise.all(areas.map(async area => {
+      try {
+        const monsters = await this.targetDiscoveryService.listCombatMonsters(area.key, {
+          maxAgeMs,
+          signal,
+        });
+        return {
+          areaKey: area.key,
+          monsters: monsters.filter(monster => !this.ignoredTargetIds.has(String(
+            monster.id || monster.battleId || monster.dgmid || monster.battleRef?.dgmid || '',
+          ))),
+        };
+      } catch (error) {
+        if (error?.code === 'READ_ABORTED' || error?.name === 'AbortError') throw error;
+        this.log('INFO', `Boss Hunt skipped ${area.label}: ${error.message}`);
+        return { areaKey: area.key, monsters: [] };
+      }
+    }));
+    const target = this.targetLedger.selectBossTarget(settled);
+    if (!target) {
+      this.battleManager.clear();
+      this.currentTarget = null;
+      this.currentCombatContext = null;
+      this._transition(BotState.IDLE, 'No configured boss is currently active and eligible');
+      const delay = Math.max(1, Number(this.config.scheduler?.targetScanIntervalSeconds) || 1) * 1000;
+      await this.timingEngine.sleepRandom(delay, Math.ceil(delay * 1.15), signal);
+      return { success: true, areasScanned: areas.length, eligibleTargets: 0 };
+    }
+    const route = this.moduleRegistry.resolveArea(target.areaKey);
+    if (!route) return this._wait(`Boss Hunt area ${target.areaKey} is unavailable`, signal);
+    const snapshot = settled.find(entry => entry.areaKey === target.areaKey);
+    return this._scan({
+      ...route,
+      areaKey: target.areaKey,
+      monstersOverride: snapshot?.monsters || [],
+      preferredMonsterKey: target.monsterKey,
+      targetNamespace: 'boss_hunt',
+    }, signal);
   }
 
   async _join(signal) {
@@ -2342,14 +2570,28 @@ class BotEngine extends EventEmitter {
         }
       }
       const updates = {};
-      if (result.stamina !== null && result.stamina !== undefined) {
+      const falseSupportStamina = skill?.supportAbility === true
+        && Number(result.stamina) === 0
+        && Number(playerStateBefore.stamina?.current ?? playerStateBefore.stamina) > 0;
+      if (result.stamina !== null && result.stamina !== undefined && !falseSupportStamina) {
         updates.stamina = { current: result.stamina, max: stateStore.getState().stamina.max };
       }
       if (result.retaliation?.user_hp_after !== undefined) {
-        updates.hp = {
-          current: result.retaliation.user_hp_after,
-          max: this.battleManager.getCurrentBattle()?.playerMaxHp || stateStore.getState().hp.max,
-        };
+        const nextHp = Number(result.retaliation.user_hp_after);
+        const retaliationDamage = Number(result.retaliation?.damage);
+        const hpBefore = Number(playerHpBefore ?? playerStateBefore.hp?.current);
+        const falseSupportZero = skill?.supportAbility === true && nextHp === 0 && hpBefore > 0
+          && !(Number.isFinite(retaliationDamage) && retaliationDamage > 0);
+        if (!falseSupportZero) {
+          updates.hp = {
+            current: result.retaliation.user_hp_after,
+            max: this.battleManager.getCurrentBattle()?.playerMaxHp || stateStore.getState().hp.max,
+          };
+          if (skill?.supportAbility !== true && hpBefore > 0 && nextHp <= 0) {
+            this.stats.deaths = Math.max(0, Number(this.stats.deaths) || 0) + 1;
+            this.log('WARN', `Player death recorded (${this.stats.deaths}${Number(this.config.resources?.health?.maxDeaths) > 0 ? `/${this.config.resources.health.maxDeaths}` : '/∞'}).`);
+          }
+        }
       }
       if (result.mana !== null && result.mana !== undefined) {
         updates.mp = { current: result.mana, max: stateStore.getState().mp.max };
@@ -2404,6 +2646,9 @@ class BotEngine extends EventEmitter {
         && Number.isFinite(Number(playerStateBefore.expRequired))
         && Number(playerStateBefore.expCurrent) + xpDelta >= Number(playerStateBefore.expRequired)) {
         await this.refreshStats();
+        // The loadout hash is still valid, but the player level/Stats portion
+        // of the damage-learning context changed after the level-up.
+        this.currentCombatContext = null;
       }
       return result;
     }
@@ -2502,6 +2747,17 @@ class BotEngine extends EventEmitter {
     this.currentCombatContext = null;
     this._removeProgressionClaim(claim);
     await this.refreshStats();
+    const refreshedLevel = Number(stateStore.getState().level);
+    if (this.progressionLootBatchActive
+      && Number.isFinite(this.progressionLootBatchStartLevel)
+      && Number.isFinite(refreshedLevel)
+      && refreshedLevel > this.progressionLootBatchStartLevel) {
+      this.log('INFO', `Progression reached level ${refreshedLevel}; releasing the remaining locked loot instead of consuming another level.`);
+      this._releaseProgressionLootBatch();
+      // Do not leave the remaining candidates available for the next loop.
+      // A fresh discovery pass must prove that another level is intended.
+      this._resetProgressionLootSnapshot();
+    }
     if (!this.isRunning || signal?.aborted) {
       const error = new Error('cancelled');
       error.name = 'AbortError';
@@ -2573,6 +2829,7 @@ class BotEngine extends EventEmitter {
   _releaseProgressionLootBatch() {
     this.progressionLootBatchActive = false;
     this.progressionLootBatchConfig = null;
+    this.progressionLootBatchStartLevel = null;
     if (!this.progressionLootRefreshPending) return;
     this.progressionLootRefreshPending = false;
     this._resetProgressionLootSnapshot();
@@ -2795,21 +3052,24 @@ class BotEngine extends EventEmitter {
     this._transition(BotState.FARMING_ENERGY, 'Stamina below configured threshold');
     const targets = this.getMangaTargets(this.accountName) || [];
     const target = targets
-      .filter(manga => (manga.chapters || 0) > (manga.farmedCount || 0))
-      .sort((left, right) => (left.farmedCount || 0) - (right.farmedCount || 0))[0];
+      .map(manga => ({ manga, nextChapter: nextUnfarmedChapter(manga) }))
+      .filter(entry => entry.nextChapter)
+      .sort((left, right) => (left.manga.farmedCount || 0) - (right.manga.farmedCount || 0))[0];
     if (!target) {
       this.chapterFallbackBlockedUntil = Date.now() + 30000;
       this.lastResult = { success: false, message: 'No unfarmed manga chapters are configured' };
       this._transition(BotState.IDLE, this.lastResult.message);
       return this.lastResult;
     }
-    const chapter = (target.farmedCount || 0) + 1;
+    const manga = target.manga;
+    const chapter = target.nextChapter.number;
     const result = await this.chapterFarmer.farmSingleChapter(
       this.accountName,
-      target.slug,
+      manga.slug,
       chapter,
       params.reactionType,
-      signal
+      signal,
+      { chapterUrl: target.nextChapter.url },
     );
     this._recordAction(result);
     if (result.isCloudflare) {
@@ -2825,35 +3085,35 @@ class BotEngine extends EventEmitter {
     if (result.success) {
       this.chapterFallbackBlockedUntil = 0;
       this.stats.chaptersFarmed += 1;
-      this.stats.energyFarmed += 2;
+      const staminaGained = Number.isFinite(Number(result.energy)) ? Math.max(0, Number(result.energy)) : 0;
+      this.stats.energyFarmed += staminaGained;
       const stored = stateStore.getState();
       const current = stored.farmedEnergy || 0;
       const staminaCurrent = Math.max(0, Number(stored.stamina.current) || 0);
       const staminaMax = Math.max(staminaCurrent, Number(stored.stamina.max) || staminaCurrent);
-      stateStore.update({ farmedEnergy: Math.min(1000, current + 2) });
+      stateStore.update({ farmedEnergy: Math.min(1000, current + staminaGained) });
       this._observeStats({
         stamina: {
-          current: Math.min(staminaMax, staminaCurrent + 2),
+          current: Math.min(staminaMax, staminaCurrent + staminaGained),
           max: staminaMax,
         },
       }, 'confirmed chapter reaction reward');
-      this.onChapterFarmed(this.accountName, target.slug, {
+      this.onChapterFarmed(this.accountName, manga.slug, {
         chapter,
         automatic: true,
-        staminaGained: 2,
+        staminaGained,
         message: result.message || 'Chapter reaction accepted',
       });
       this._recordEvent?.('chapter_farm', {
-        manga: target.slug,
+        manga: manga.slug,
         chapter,
-        staminaGained: 2,
+        staminaGained,
         reaction: result.reactionCode,
       });
-      await this.gameReader.fetchFarmedEnergy(target.slug, chapter);
+      await this.gameReader.fetchFarmedEnergy(manga.slug, chapter, target.nextChapter.url);
     } else if (result.duplicate) {
       this.chapterFallbackBlockedUntil = 0;
-      this.stats.chaptersFarmed += 1;
-      this.onChapterFarmed(this.accountName, target.slug, {
+      this.onChapterFarmed(this.accountName, manga.slug, {
         chapter,
         automatic: true,
         duplicate: true,
@@ -2875,10 +3135,26 @@ class BotEngine extends EventEmitter {
     this.lastResult = result;
   }
 
+  _recordPlayerDeath(hpBefore, hpAfter) {
+    if (!Number.isFinite(hpBefore) || !Number.isFinite(hpAfter) || hpBefore <= 0 || hpAfter > 0) return false;
+    this.stats.deaths = Math.max(0, Number(this.stats.deaths) || 0) + 1;
+    const maxDeaths = Math.max(0, Math.trunc(Number(this.config.resources?.health?.maxDeaths) || 0));
+    this.log('WARN', maxDeaths > 0
+      ? `Player death recorded (${this.stats.deaths}/${maxDeaths} maximum).`
+      : `Player death recorded (${this.stats.deaths}; no maximum configured).`);
+    return true;
+  }
+
   async _prepareCombatContext(force = false) {
     if (!this.currentTarget || !this.loadoutService || !this.damageObservationStore) {
       this.currentCombatContext = null;
       return null;
+    }
+    // Quick Set application and explicit invalidation clear both fields. While
+    // they remain populated, the active battle already has a stable loadout
+    // fingerprint and does not need another Gear/Pet page read every 30s.
+    if (!force && this.currentCombatContext && this.currentLoadoutSnapshot) {
+      return this.currentCombatContext;
     }
     try {
       const snapshot = await this.loadoutService.getActiveLoadout({ force });
@@ -2960,6 +3236,9 @@ class BotEngine extends EventEmitter {
   }
 
   _enterChallenge(reason) {
+    this.currentAction = 'WAIT';
+    this.currentReason = reason;
+    this._setRuntimeStatus('blocked', 'Manual challenge required', reason, 'challenge');
     if (!this.fsm.is(BotState.CHALLENGE_WAIT)) {
       this.fsm.transition(BotState.CHALLENGE_WAIT, reason);
       this.emit('captcha-alert', { active: true });
@@ -2972,4 +3251,9 @@ class BotEngine extends EventEmitter {
   }
 }
 
-module.exports = { BotEngine, MUTATING_ACTIONS };
+module.exports = {
+  BotEngine,
+  MUTATING_ACTIONS,
+  isActiveDungeonCombat,
+  shouldRefreshProgressionLoot,
+};

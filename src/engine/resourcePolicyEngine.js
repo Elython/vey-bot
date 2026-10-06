@@ -8,6 +8,17 @@ const PURCHASE_TYPES = Object.freeze({
 const STAMINA_POTION_TYPES = new Set(['small', 'large', 'full', 'adventure']);
 const MANA_POTION_TYPES = new Set(['small', 'large']);
 
+function staminaMinimumAmount(config = {}, state = {}) {
+  if (state.progression?.ignoreSoftStaminaRules === true) return 0;
+  const keepMinPercent = Math.min(100, Math.max(
+    0,
+    Number(config.resources?.stamina?.keepMin) || 0,
+  ));
+  const maxStamina = Math.max(0, Number(state.maxStamina) || 0);
+  if (keepMinPercent <= 0 || maxStamina <= 0) return 0;
+  return Math.ceil((maxStamina * keepMinPercent) / 100);
+}
+
 class ResourcePolicyEngine {
   constructor(config = {}) {
     this.updateConfig(config);
@@ -70,4 +81,4 @@ class ResourcePolicyEngine {
   }
 }
 
-module.exports = { ResourcePolicyEngine, PURCHASE_TYPES };
+module.exports = { ResourcePolicyEngine, PURCHASE_TYPES, staminaMinimumAmount };

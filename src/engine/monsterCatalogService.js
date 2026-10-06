@@ -1,12 +1,12 @@
 const fs = require('fs');
 const path = require('path');
-const { getMonsterArea, monsterTypeKey, supportsAutoFarm } = require('./monsterCatalog');
+const { getDataPath } = require('../dataDirectory');
+const { getMonsterArea, listMonsterAreas, monsterTypeKey, supportsAutoFarm } = require('./monsterCatalog');
+const { bossTargetKey, isVerifiedBossTarget } = require('./bossHunt');
 const { unavailableWaveError } = require('./areaAccessService');
-const { getDataDir } = require('../main/dataPaths');
 
 const CATALOG_SCHEMA_VERSION = 1;
 const DEFAULT_BASE_PATH = path.join(__dirname, '..', 'catalogs', 'monsterStats.json');
-const DEFAULT_CACHE_PATH = path.join(getDataDir(), 'monster_stats_cache.json');
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -41,7 +41,7 @@ class MonsterCatalogService {
   constructor(gameAPI, options = {}) {
     this.gameAPI = gameAPI;
     this.basePath = options.basePath || DEFAULT_BASE_PATH;
-    this.cachePath = options.cachePath || DEFAULT_CACHE_PATH;
+    this.cachePath = options.cachePath || getDataPath('monster_stats_cache.json');
     this.baseCatalog = readCatalog(this.basePath);
     // The old runtime cache has no trustworthy account owner. Keep it
     // readable only for isolated legacy/test construction; authenticated
@@ -433,7 +433,7 @@ class MonsterCatalogService {
           : (autoFarmMappingDeferred ? 'Awaiting an unambiguous account database monster-to-area observation' : ''),
         error: autoFarmMappingDeferred
           ? (mappedAutoFarmTypes.length > 0 ? ''
-            : `The server exposes static monster IDs without an unambiguous Gate/Event ownership match${autoFarmReadError ? ` (${autoFarmReadError})` : ''}.`)
+            : `Veybot has not learned which Gate or Event owns this monster yet. Add it once from the game's Auto Farm page, then refresh Veybot${autoFarmReadError ? ` (${autoFarmReadError})` : ''}.`)
           : '',
       },
       monsters: [...byType.values()].map(({ monsterId, ...monster }) => monster),
@@ -1067,6 +1067,75 @@ class MonsterCatalogService {
     fs.writeFileSync(temporary, `${JSON.stringify(this.cacheCatalog, null, 2)}\n`, { mode: 0o600 });
     fs.renameSync(temporary, this.cachePath);
     return true;
+  }
+
+  listKnownBosses() {
+    const areas = listMonsterAreas()
+      .filter(area => ['gate', 'event'].includes(area.type));
+    const rows = [];
+    for (const area of areas) {
+      const remembered = this.accountDatabase && this.accountRef
+        ? this.accountDatabase.listMonsterTypes(this.accountRef, area.key)
+        : [];
+      const live = this.getLiveMonsters(area.key);
+      const byTarget = new Map();
+      for (const monster of live) {
+        if (!isVerifiedBossTarget(monster)) continue;
+        const targetKey = bossTargetKey(monster);
+        if (!targetKey) continue;
+        const existing = byTarget.get(targetKey);
+        const alive = monster.dead !== true && Number(monster.hp) > 0;
+        if (existing) {
+          existing.aliveCount += alive ? 1 : 0;
+          existing.activeInstances += 1;
+          existing.totalCount = Math.max(existing.totalCount, existing.activeInstances);
+          continue;
+        }
+        const baseKey = monsterTypeKey(monster.name);
+        const record = this.getRecord(area.key, baseKey) || {};
+        byTarget.set(targetKey, {
+          targetKey,
+          areaKey: area.key,
+          areaName: area.label,
+          areaType: area.type,
+          monsterKey: baseKey,
+          name: monster.name,
+          phase: Number(monster.phase) || null,
+          boss: Number(monster.phase) > 0 ? false : monster.boss === true,
+          bossEvidence: monster.bossEvidence || null,
+          aliveCount: alive ? 1 : 0,
+          activeInstances: 1,
+          totalCount: 1,
+          statsAvailable: Boolean(record.stats),
+        });
+      }
+      for (const type of remembered) {
+        if (!(type.boss === true && type.bossEvidence) && !(Number(type.phase) > 0)) continue;
+        const targetKey = bossTargetKey({ name: type.canonicalName, phase: type.phase });
+        if (!targetKey || byTarget.has(targetKey)) continue;
+        const baseKey = monsterTypeKey(type.monsterKey || type.canonicalName);
+        const record = this.getRecord(area.key, baseKey) || {};
+        byTarget.set(targetKey, {
+          targetKey,
+          areaKey: area.key,
+          areaName: area.label,
+          areaType: area.type,
+          monsterKey: baseKey,
+          name: type.canonicalName,
+          phase: Number(type.phase) || null,
+          boss: Number(type.phase) > 0 ? false : type.boss === true,
+          bossEvidence: type.bossEvidence || null,
+          aliveCount: 0,
+          activeInstances: 0,
+          totalCount: Math.max(0, Number(type.maxObservedCount) || 0),
+          statsAvailable: Boolean(record.stats),
+        });
+      }
+      rows.push(...byTarget.values());
+    }
+    return clone(rows.sort((left, right) => left.areaName.localeCompare(right.areaName)
+      || left.name.localeCompare(right.name)
+      || Number(left.phase || 0) - Number(right.phase || 0)));
   }
 
   _factScope(areaKey) {

@@ -12,6 +12,7 @@
                   <option value="gates">Gates</option>
                   <option value="dungeons">Dungeons</option>
                   <option value="event">Event</option>
+                  <option value="boss_hunt">Boss Hunt</option>
                   <option value="auto_farm">Auto Farm</option>
                   <option value="battle_pass">Battle Pass</option>
                   <option value="adventure_quests">Adv Quests</option>
@@ -75,7 +76,7 @@
                       class="tree-input-sm" min="0" max="100"><span class="unit-label">%</span></div>
                 </div>
                 <div class="form-tree-row"><label class="form-tree-label" for="inputMaxDeaths">Max Deaths</label>
-                  <div class="form-tree-control"><input id="inputMaxDeaths" type="number" class="tree-input-sm" min="0">
+                  <div class="form-tree-control resource-counter"><span id="healthDeathsUsed" class="potion-count-used">0 deaths</span><input id="inputMaxDeaths" type="number" class="tree-input-sm" min="0" title="0 means unlimited"><span class="unit-label">0 = ∞</span>
                   </div>
                 </div>
                 <div class="form-tree-row"><label class="form-tree-label" for="chkUseHealingPotions">Use Healing
@@ -83,10 +84,8 @@
                   <div class="form-tree-control"><input id="chkUseHealingPotions" type="checkbox" class="tree-checkbox">
                   </div>
                 </div>
-                <div class="form-tree-row"><label class="form-tree-label" for="inputMaxHealingPotions">Max Healing
-                    Potions</label>
-                  <div class="form-tree-control"><input id="inputMaxHealingPotions" type="number" class="tree-input-sm"
-                      min="0"></div>
+                <div id="rowHealingPotionLimit" class="form-tree-row resource-child-row"><label class="form-tree-label" for="inputMaxHealingPotions">Healing potions limit</label>
+                  <div class="form-tree-control"><span class="potion-limit-status"><span id="healthPotsUsed" class="potion-count-used">0 used</span><span id="healthPotsAvailable" class="potion-count-available">0 left</span></span><input id="inputMaxHealingPotions" type="number" class="tree-input-sm" min="0"></div>
                 </div>
                 <div class="form-tree-row"><label class="form-tree-label" for="chkBuyHealthPotion">Buy Health pot if
                     needed (30k gold)</label>
@@ -124,14 +123,14 @@
                       <option value="large">Large pot</option>
                     </select></div>
                 </div>
-                <div class="form-tree-row resource-child-row"><label class="form-tree-label"
+                <div id="rowSmallManaPotLimit" class="form-tree-row resource-child-row"><label class="form-tree-label"
                     for="inputSmallManaPotLimit">Small pots limit</label>
-                  <div class="form-tree-control"><input id="inputSmallManaPotLimit" type="number" class="tree-input-sm"
+                  <div class="form-tree-control"><span class="potion-limit-status"><span id="smallManaPotsUsed" class="potion-count-used">0 used</span><span id="smallManaPotsAvailable" class="potion-count-available">0 left</span></span><input id="inputSmallManaPotLimit" type="number" class="tree-input-sm"
                       min="0"></div>
                 </div>
-                <div class="form-tree-row resource-child-row"><label class="form-tree-label"
+                <div id="rowLargeManaPotLimit" class="form-tree-row resource-child-row"><label class="form-tree-label"
                     for="inputLargeManaPotLimit">Large pots limit</label>
-                  <div class="form-tree-control"><input id="inputLargeManaPotLimit" type="number" class="tree-input-sm"
+                  <div class="form-tree-control"><span class="potion-limit-status"><span id="largeManaPotsUsed" class="potion-count-used">0 used</span><span id="largeManaPotsAvailable" class="potion-count-available">0 left</span></span><input id="inputLargeManaPotLimit" type="number" class="tree-input-sm"
                       min="0"></div>
                 </div>
                 <div class="form-tree-row"><label class="form-tree-label">Keep mana in range</label>
@@ -157,4 +156,5 @@
               </div>
             </div>
           </div>
+          <div class="page-info-footer"><button id="btnBotSetupPageInfo" class="btn btn-secondary btn-sm" type="button"><i data-lucide="circle-help"></i> Info</button></div>
         </div>

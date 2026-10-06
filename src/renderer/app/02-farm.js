@@ -176,7 +176,6 @@ let DUNGEON_MAPS = [
   ['shadowbridge_warrens', 'Shadowbridge Warrens'],
   ['polyhedral_crucible', 'The Polyhedral Crucible'],
 ];
-let EVENT_MAPS = [
-  ['event_black_crown_ascends', 'The Black Crown Ascends'],
-];
-
+// Event areas are populated from the active/custom area catalog. Ended events
+// are deliberately not kept in this visible bootstrap list.
+let EVENT_MAPS = [];

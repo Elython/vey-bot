@@ -1,10 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const { hashCanonical } = require('./loadoutCatalog');
-const { getDataDir } = require('../main/dataPaths');
+const { getDataPath } = require('../dataDirectory');
 
 const XP_MODEL_SCHEMA_VERSION = 1;
-const DEFAULT_PATH = path.join(getDataDir(), 'xp_observations.json');
 
 function emptyStore() {
   return { schemaVersion: XP_MODEL_SCHEMA_VERSION, records: {} };
@@ -59,8 +58,8 @@ function accountLevelKey(accountName, level) {
 }
 
 class XpModel {
-  constructor(filePath = DEFAULT_PATH, options = {}) {
-    this.filePath = filePath;
+  constructor(filePath, options = {}) {
+    this.filePath = filePath || getDataPath('xp_observations.json');
     this.now = options.now || (() => Date.now());
     this.maxSamples = Math.max(1, Math.trunc(Number(options.maxSamples) || 20));
     this.data = this._read();

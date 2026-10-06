@@ -6,12 +6,12 @@
 
 const fs = require('fs');
 const path = require('path');
-const { getDataDir } = require('./dataPaths');
+const { getDataPath } = require('../dataDirectory');
 
 class CredentialManager {
   constructor(safeStorage, storagePath) {
     this.safeStorage = safeStorage;
-    this.storagePath = storagePath || path.join(getDataDir(), 'credentials.json');
+    this.storagePath = storagePath || getDataPath('credentials.json');
     this._restrictExistingFile();
   }
 

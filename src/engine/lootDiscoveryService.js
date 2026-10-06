@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { getMonsterArea } = require('./monsterCatalog');
+const { getDataPath } = require('../dataDirectory');
 const {
   ReadPriority,
   WorldDomain,
@@ -9,10 +10,8 @@ const {
   assertAccountScope,
   createCollectorResult,
 } = require('./worldState');
-const { getDataDir } = require('../main/dataPaths');
 
 const LOOT_DISCOVERY_SCHEMA_VERSION = 1;
-const DEFAULT_PATH = path.join(getDataDir(), 'loot_discovery.json');
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -111,10 +110,10 @@ function projectLootableArea(catalog, snapshot) {
 }
 
 class LootDiscoveryService {
-  constructor(monsterCatalogService, accountName, filePath = DEFAULT_PATH, options = {}) {
+  constructor(monsterCatalogService, accountName, filePath, options = {}) {
     this.monsterCatalogService = monsterCatalogService;
     this.accountName = accountName;
-    this.filePath = filePath;
+    this.filePath = filePath || getDataPath('loot_discovery.json');
     this.now = options.now || (() => Date.now());
     this.accountDatabase = options.accountDatabase || null;
     this.areaDirectoryService = options.areaDirectoryService || null;

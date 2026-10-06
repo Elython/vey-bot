@@ -62,11 +62,11 @@ class BattleManager {
     const battle = this._requireBattle();
     if (battle.isDead) return { success: false, message: 'Monster is already dead' };
     const result = await this.controller.attack(battle.battleLocator || battle.battleCfg, skill, delay, signal);
-    this.applyAttackResult(result);
+    this.applyAttackResult(result, { supportAbility: skill?.supportAbility === true });
     return result;
   }
 
-  applyAttackResult(result) {
+  applyAttackResult(result, options = {}) {
     if (!this.currentBattle || !result) return;
     const previousUserDamage = Number(this.currentBattle.userDamage ?? this.currentBattle.userDmg ?? 0) || 0;
     if (result.hp) {
@@ -77,9 +77,19 @@ class BattleManager {
         this.currentBattle.hasLootButton = true;
       }
     }
-    if (result.stamina !== null && result.stamina !== undefined) this.lastStamina = result.stamina;
+    const placeholderSupportResources = options.supportAbility === true;
+    if (result.stamina !== null && result.stamina !== undefined
+      && !(placeholderSupportResources && Number(result.stamina) === 0)) {
+      this.lastStamina = result.stamina;
+    }
     if (result.retaliation?.user_hp_after !== undefined) {
-      this.currentBattle.playerHp = result.retaliation.user_hp_after;
+      const nextHp = Number(result.retaliation.user_hp_after);
+      const retaliationDamage = Number(result.retaliation?.damage);
+      const falseSupportZero = placeholderSupportResources
+        && nextHp === 0
+        && Number(this.currentBattle.playerHp) > 0
+        && !(Number.isFinite(retaliationDamage) && retaliationDamage > 0);
+      if (!falseSupportZero) this.currentBattle.playerHp = result.retaliation.user_hp_after;
     }
     if (result.mana !== null && result.mana !== undefined) this.currentBattle.playerMana = result.mana;
     if (result.totalDmgDealt !== null && result.totalDmgDealt !== undefined) {

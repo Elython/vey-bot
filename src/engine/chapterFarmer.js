@@ -71,11 +71,28 @@ class ChapterFarmer {
     return userId;
   }
 
-  async farmSingleChapter(accountName, slug, chapterNum, reactionType = '1', signal = null) {
+  static chapterUrlCandidates(slug, chapterNum, preferredUrl = null) {
+    const urls = [];
+    if (preferredUrl) {
+      try {
+        const parsed = new URL(preferredUrl);
+        if (parsed.protocol === 'https:' && parsed.hostname === 'demonicscans.org') {
+          parsed.hash = '';
+          urls.push(parsed.toString());
+        }
+      } catch {
+        // Ignore stale or malformed catalog entries and use the canonical URL.
+      }
+    }
+    urls.push(`https://demonicscans.org/title/${encodeURIComponent(slug)}/chapter/${chapterNum}/1`);
+    return [...new Set(urls)];
+  }
+
+  async farmSingleChapter(accountName, slug, chapterNum, reactionType = '1', signal = null, options = {}) {
     if (!this.http) return { success: false, message: 'Game browser session unavailable.' };
     const safeSlug = String(slug || '').trim();
-    const safeChapter = Number.parseInt(chapterNum, 10);
-    if (!/^[A-Za-z0-9_-]+$/.test(safeSlug) || !Number.isInteger(safeChapter) || safeChapter < 1) {
+    const safeChapter = Number(chapterNum);
+    if (!/^[A-Za-z0-9_-]+$/.test(safeSlug) || !/^\d+(?:\.\d+)?$/.test(String(chapterNum)) || !Number.isFinite(safeChapter) || safeChapter <= 0) {
       return { success: false, message: 'Invalid manga slug or chapter number.' };
     }
 
@@ -84,11 +101,20 @@ class ChapterFarmer {
       return { success: false, duplicate: true, message: 'Chapter was already processed in this session.' };
     }
 
-    const chapterUrl = `https://demonicscans.org/title/${encodeURIComponent(safeSlug)}/chapter/${safeChapter}/1`;
+    const chapterUrls = ChapterFarmer.chapterUrlCandidates(safeSlug, safeChapter, options.chapterUrl);
+    let chapterUrl = chapterUrls[0];
     try {
-      const response = await this.http.get(chapterUrl, { retries: 1 });
-      if (!response.ok) {
-        return { success: false, status: response.status, message: `Failed to load chapter page (HTTP ${response.status}).` };
+      let response = null;
+      for (const candidate of chapterUrls) {
+        const candidateResponse = await this.http.get(candidate, { retries: 1 });
+        if (!candidateResponse.ok) continue;
+        if (!ChapterFarmer.extractChapterId(candidateResponse.text)) continue;
+        chapterUrl = candidate;
+        response = candidateResponse;
+        break;
+      }
+      if (!response) {
+        return { success: false, message: `No verified reaction form was found for Chapter ${safeChapter}. Refresh this manga's chapter list and try again.` };
       }
       const chapterId = ChapterFarmer.extractChapterId(response.text);
       if (!chapterId) {
@@ -98,7 +124,10 @@ class ChapterFarmer {
 
       const userId = await this._getOrCreateUserUid(response.text);
       const reactionCode = ChapterFarmer.resolveReactionType(reactionType);
-      await this.timing.waitForAction(signal);
+      const requestedDelay = options.delayMs === null || options.delayMs === undefined ? NaN : Number(options.delayMs);
+      await this.timing.waitForAction(signal, Number.isFinite(requestedDelay) && requestedDelay >= 0
+        ? { minDelayMs: requestedDelay, maxDelayMs: requestedDelay }
+        : {});
       const postResponse = await this.http.postMultipart('https://demonicscans.org/postreaction.php', {
         chapterid: chapterId,
         reaction: reactionCode,
@@ -110,15 +139,16 @@ class ChapterFarmer {
         return { success: false, status: postResponse.status, message: postResponse.text.slice(0, 200) };
       }
 
-      const updated = /updated/i.test(postResponse.text);
-      if (!updated) {
+      const confirmation = postResponse.text.trim().match(/^(?:Reaction\s+)?(added|updated)[.!]?$/i);
+      if (!confirmation) {
         Logger.logApi(accountName, 'POST', 'https://demonicscans.org/postreaction.php', postResponse.status, 'Reaction response did not confirm an update');
         return { success: false, status: postResponse.status, message: postResponse.text.slice(0, 200) || 'Reaction was not confirmed by the server.' };
       }
 
       this.reactedChapters.add(chapterKey);
       Logger.logApi(accountName, 'POST', 'https://demonicscans.org/postreaction.php', postResponse.status, `Reaction success (${reactionCode})`);
-      return { success: true, chapterId, reactionCode, message: postResponse.text.trim().slice(0, 200), status: postResponse.status };
+      const reactionStatus = confirmation[1].toLowerCase();
+      return { success: true, chapterId, chapterUrl, reactionCode, reactionStatus, energy: reactionStatus === 'added' ? 2 : 0, message: postResponse.text.trim().slice(0, 200), status: postResponse.status };
     } catch (error) {
       const isCloudflare = error.code === 'CLOUDFLARE';
       Logger.logApi(accountName, 'FARM', chapterUrl, error.status || 0, `Error: ${error.message}`);

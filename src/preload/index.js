@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('botAPI', {
   getMonsterStats: (areaKey, monsterKey, refresh = false) => ipcRenderer.invoke('monsters:get-stats', areaKey, monsterKey, refresh),
   applyObservedMonsterStats: (areaKey, monsterKey) => ipcRenderer.invoke('monsters:apply-observed-stats', areaKey, monsterKey),
   collectMonsterStatsForArea: (areaKey) => ipcRenderer.invoke('monsters:collect-area-stats', areaKey),
+  listBossHuntTargets: (force = false) => ipcRenderer.invoke('boss-hunt:list-targets', force === true),
   getActivityHistory: (kind, limit = 100) => ipcRenderer.invoke('history:list', kind, limit),
   clearActivityHistory: (kinds, before = null) => ipcRenderer.invoke('history:clear', { kinds, before }),
   getStatistics: (period = '7d') => ipcRenderer.invoke('statistics:get', { period }),

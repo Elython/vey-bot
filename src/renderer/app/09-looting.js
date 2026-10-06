@@ -52,6 +52,8 @@ function renderLootArea(area, discovered = [], sourceAvailable = true, message =
     const stored = savedLoot[monster.key] || {};
     const row = document.createElement('div');
     row.className = 'loot-config-row';
+    row.dataset.monsterKey = monster.key;
+    row.dataset.monsterName = monster.name;
     const name = document.createElement('div');
     name.className = 'monster-config-name';
     name.textContent = monster.name;
@@ -140,6 +142,28 @@ function renderLootArea(area, discovered = [], sourceAvailable = true, message =
   lootAreaContent.replaceChildren(table);
   refreshLucideIcons(lootAreaContent);
 }
+
+async function setAllVisibleLoot(field, value) {
+  const areaKey = activeLootAreaKey;
+  if (!areaKey) return;
+  const patch = {};
+  for (const row of lootAreaContent?.querySelectorAll('.loot-config-row[data-monster-key]') || []) {
+    patch[row.dataset.monsterKey] = { name: row.dataset.monsterName || row.dataset.monsterKey, [field]: value };
+    const checkbox = row.querySelector(field === 'unlimited' ? '.loot-unlimited' : '.loot-enabled');
+    if (checkbox) checkbox.checked = value;
+  }
+  if (Object.keys(patch).length === 0) return;
+  const result = await updateCanonicalConfig({ looting: { maps: { [areaKey]: patch } } });
+  if (!result?.success) {
+    appendLog('ERROR', result?.error || 'Could not update visible loot settings');
+    return;
+  }
+  lootingConfig = result.config?.looting || lootingConfig;
+  await selectLootArea(areaKey, true);
+}
+
+btnLootUnlimitedAll?.addEventListener('click', () => setAllVisibleLoot('unlimited', true));
+btnLootEnableAll?.addEventListener('click', () => setAllVisibleLoot('enabled', true));
 
 async function selectLootArea(areaKey, force = false) {
   const area = monsterCatalog.find(candidate => candidate.key === areaKey);

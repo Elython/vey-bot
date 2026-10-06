@@ -50,9 +50,13 @@ const { WindowManager } = require('./windowManager');
 const { registerIpcHandlers } = require('./ipcRouter');
 const { Logger } = require('./logger');
 const { mangaManager } = require('./mangaManager');
-const { initDataDir, getDataDir } = require('./dataPaths');
 const { stateStore } = require('../engine/stateStore');
 const { createCoalescedRunner } = require('./coalescedRunner');
+const {
+  getDataDirectory,
+  getDataPath,
+  initializeAppDataDirectory,
+} = require('../dataDirectory');
 
 let windowManager = null;
 let sessionManager = null;
@@ -149,6 +153,7 @@ async function performLogin(accountName) {
   let config = configManager.getConfig();
   const timingEngine = new TimingEngine(config.scheduler);
   const httpClient = new HttpClient(wc, accountName, timingEngine);
+  mangaManager.setHttpClient(httpClient);
   const gameAPI = new GameAPI(httpClient, accountName);
   worldStateAccountKey = accountKeyFromUserId(await gameAPI.getAuthenticatedUserId());
   const accountBinding = accountDatabase.bindStableAccount(worldStateAccountKey, accountName);
@@ -272,8 +277,9 @@ async function performLogin(accountName) {
     windowManager,
     chapterFarmer,
     getMangaTargets: account => mangaManager.getAccountMangaList(account),
+    onChapterCycleReset: (account, cycleId) => mangaManager.resetFarmCycle(account, cycleId),
     onChapterFarmed: (account, slug, details = {}) => {
-      mangaManager.incrementFarmedCount(account, slug);
+      mangaManager.incrementFarmedCount(account, slug, details.chapter);
       if (details.automatic === true) {
         windowManager?.sendToMain('energy:progress', {
           automatic: true,
@@ -409,6 +415,7 @@ async function handleLogout() {
   loadoutService = null;
   energyFarmEngine = null;
   chapterFarmer = null;
+  mangaManager.setHttpClient(null);
   collectorRegistry = null;
   worldStateService = null;
   readCoordinator = null;
@@ -668,9 +675,12 @@ function wireGameWindowEvents() {
 // ─── App Bootstrap ───────────────────────────────────────────────────
 
 app.whenReady().then(() => {
-  const dataDir = initDataDir(app);
-  Logger.init(dataDir);
-  mangaManager.init(dataDir);
+  const dataInitialization = initializeAppDataDirectory(app);
+  Logger.setLogsDirectory(getDataPath('logs'));
+  mangaManager.setDataDirectory(getDataDirectory());
+  if (dataInitialization.copied > 0) {
+    Logger.logClient('System', `Migrated ${dataInitialization.copied} existing data file(s) into the per-user Veybot data directory`);
+  }
   sessionManager = new SessionManager();
   credentialManager = new CredentialManager(safeStorage);
   damageObservationStore = new DamageObservationStore();
@@ -680,7 +690,7 @@ app.whenReady().then(() => {
     maxEvents: 5000,
     writeDebounceMs: 250,
   });
-  accountDatabase.importLegacyActivityHistory(path.join(getDataDir(), 'activity_history.json'));
+  accountDatabase.importLegacyActivityHistory(getDataPath('activity_history.json'));
   configManager = new ConfigManager(undefined, { accountDatabase });
   activityHistoryStore = new ActivityHistoryStore(undefined, {
     database: accountDatabase,

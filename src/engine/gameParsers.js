@@ -1165,7 +1165,16 @@ function parseBattleConsumables(html) {
     const itemId = parseNumber(block.attributes['data-item-id'] || button['data-item']);
     const name = String(button['data-name'] || block.html.match(/<img\b[^>]*alt=["']([^"']+)["']/i)?.[1] || '').trim();
     const quantityText = findClassValue(block.html, 'potion-qty-left');
-    const quantity = parseNumber(quantityText ?? button['data-max']);
+    const visibleQuantity = parseNumber(quantityText);
+    const buttonQuantity = parseNumber(button['data-max']);
+    // The battle drawer visually shortens large inventory totals (for example
+    // 11,366 may be rendered as 366), while data-max retains the full verified
+    // quantity used by the server-side item control. Prefer the larger value so
+    // Overview and policy counters never report the clipped presentation text.
+    const quantity = Math.max(
+      Number.isFinite(visibleQuantity) ? visibleQuantity : 0,
+      Number.isFinite(buttonQuantity) ? buttonQuantity : 0,
+    );
     const description = findClassValue(block.html, 'potion-desc') || '';
     const classification = classifyBattleConsumable(name, itemId, description);
     const restoredMatch = description.match(/(?:refills?|restores?)\s+([\d,]+)\s+(?:stamina|mana)/i);
@@ -1173,7 +1182,7 @@ function parseBattleConsumables(html) {
       inventoryId: /^\d{1,30}$/.test(inventoryId) ? inventoryId : null,
       itemId,
       name,
-      quantity: quantity === null ? 0 : Math.max(0, quantity),
+      quantity: Math.max(0, quantity),
       description,
       restoreAmount: restoredMatch ? parseNumber(restoredMatch[1]) : null,
       ...classification,
@@ -1531,10 +1540,13 @@ function parseAdventurerQuests(html) {
 function parseBattlePass(html) {
   const source = String(html || '');
   const recognized = /Battle Pass/i.test(source) && /Daily Quests/i.test(source);
-  if (!recognized) return { recognized: false, active: false, seasonId: null, title: '', endsText: '', objectives: [] };
+  if (!recognized) return { recognized: false, active: false, seasonId: null, title: '', endsText: '', level: null, completed: false, objectives: [] };
   const heading = source.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
   const season = source.match(/name=["']season_id["'][^>]*value=["'](\d+)["']/i);
   const ends = stripTags(source).match(/Ends in\s+([^•]+)/i);
+  const plainText = stripTags(source);
+  const passLevel = plainText.match(/(?:Battle\s+Pass|Pass)\s+Level\s*:?\s*(\d[\d,]*)/i);
+  const completed = /(?:Battle\s+Pass|Season)\s+(?:is\s+)?(?:Complete|Completed)|All\s+Battle\s+Pass\s+rewards\s+(?:were\s+)?claimed/i.test(plainText);
   const objectives = elementBlocks(source, 'div', 'quest').map((block, index) => {
     const text = stripTags(block.html);
     const nameMatch = block.html.match(/<strong[^>]*>([\s\S]*?)<\/strong>/i);
@@ -1559,7 +1571,9 @@ function parseBattlePass(html) {
   });
   return {
     recognized: true,
-    active: objectives.length > 0,
+    active: objectives.length > 0 && !completed,
+    level: passLevel ? Number(passLevel[1].replace(/,/g, '')) : null,
+    completed,
     seasonId: season ? Number(season[1]) : null,
     title: heading ? stripTags(heading[1]) : 'Battle Pass',
     endsText: ends ? ends[1].trim() : '',

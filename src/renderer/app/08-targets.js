@@ -3,6 +3,7 @@ async function saveMonsterRow(areaKey, monsterKey, name, controls) {
     name,
     targetDamage: Math.max(0, Math.trunc(Number(controls.targetDamage.value) || 0)),
     killCount: Math.max(0, Math.trunc(Number(controls.killCount.value) || 0)),
+    dungeonKillCount: Math.max(0, Math.trunc(Number(controls.dungeonKillCount?.value) || 0)),
     unlimited: controls.unlimited.checked,
     priority: Math.max(0, Math.trunc(Number(controls.priority.value) || 0)),
     minimumHp: Math.max(0, Math.trunc(Number(controls.minimumHp.value) || 0)),
@@ -201,7 +202,7 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
   const header = document.createElement('div');
   header.className = 'monster-config-row monster-config-header';
   for (const [label, title] of [
-    ['Monster', 'Monster Name'], ['Alive', 'Currently alive / total discovered'], ['Stats', 'Monster stats'], ['Damage', 'Target damage'], ['Kills', 'Kill count'], ['∞', 'Unlimited targets'],
+    ['Monster', 'Monster Name'], ['Alive', 'Currently alive / total discovered'], ['Stats', 'Monster stats'], ['Damage', 'Target damage'], ['Kills', 'Total kill count'], ['Per dungeon', 'Dungeon only: maximum completed targets of this type in each dungeon instance; 0 disables this separate limit'], ['∞', 'Unlimited targets'],
     ['Pri', 'Priority — lower numbers run first'], ['Min HP', 'Minimum HP'],
     ['Done', 'Completed target count'], ['Gear', 'Gear set'], ['Pet', 'Pet set'],
     ['Potions', 'Stamina potion selection'], ['Skills', 'Allow all globally enabled abilities for this monster'], ['Target', 'Target enabled'],
@@ -217,6 +218,8 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
     const stored = saved[monster.key] || {};
     const row = document.createElement('div');
     row.className = 'monster-config-row';
+    row.dataset.monsterKey = monster.key;
+    row.dataset.monsterName = monster.name;
     const name = document.createElement('div');
     name.className = 'monster-config-name';
     const nameText = document.createElement('span');
@@ -263,6 +266,22 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
     killCount.value = stored.killCount ?? 0;
     killCount.className = 'monster-number-input';
     killCount.setAttribute('aria-label', `${monster.name} kill count`);
+
+    let dungeonKillCount;
+    if (area.type === 'dungeon') {
+      dungeonKillCount = document.createElement('input');
+      dungeonKillCount.type = 'number';
+      dungeonKillCount.min = '0';
+      dungeonKillCount.step = '1';
+      dungeonKillCount.value = stored.dungeonKillCount ?? 0;
+      dungeonKillCount.className = 'monster-number-input';
+      dungeonKillCount.title = 'Maximum targets of this type to complete in each dungeon instance. It resets automatically for a new instance. 0 uses the ordinary Kills limit.';
+      dungeonKillCount.setAttribute('aria-label', `${monster.name} per-dungeon kill count`);
+    } else {
+      dungeonKillCount = document.createElement('span');
+      dungeonKillCount.textContent = '—';
+      dungeonKillCount.title = 'Per-dungeon limits apply only to Dungeon areas.';
+    }
 
     const unlimited = document.createElement('input');
     unlimited.type = 'checkbox';
@@ -332,8 +351,8 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
     enabled.title = 'Include this monster type as an automation target.';
     enabled.setAttribute('aria-label', `Target ${monster.name}`);
 
-    const controls = { targetDamage, killCount, unlimited, priority, minimumHp, gearSet, petSet, staminaPotion, allowAbilities, enabled };
-    Object.values(controls).forEach(control => {
+    const controls = { targetDamage, killCount, dungeonKillCount: area.type === 'dungeon' ? dungeonKillCount : null, unlimited, priority, minimumHp, gearSet, petSet, staminaPotion, allowAbilities, enabled };
+    Object.values(controls).filter(Boolean).forEach(control => {
       control.addEventListener('change', () => {
         saveMonsterRow(area.key, monster.key, monster.name, controls);
       });
@@ -345,7 +364,7 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
       updateTargetLimitState();
       progressText.textContent = `${stored.completedCount || 0}/${unlimited.checked ? '∞' : (killCount.value || 0)}`;
     });
-    row.append(name, availability, statsButton, targetDamage, killCount, unlimited, priority, minimumHp, progress, gearSet, petSet, staminaPotion, allowAbilities, enabled);
+    row.append(name, availability, statsButton, targetDamage, killCount, dungeonKillCount, unlimited, priority, minimumHp, progress, gearSet, petSet, staminaPotion, allowAbilities, enabled);
     enhanceNumberInputs(row);
     table.appendChild(row);
   }
@@ -353,6 +372,28 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
   monsterAreaContent.replaceChildren(table);
   refreshLucideIcons(monsterAreaContent);
 }
+
+async function setAllVisibleTargets(field, value) {
+  const areaKey = activeMonsterAreaKey;
+  if (!areaKey) return;
+  const patch = {};
+  for (const row of monsterAreaContent?.querySelectorAll('.monster-config-row[data-monster-key]') || []) {
+    patch[row.dataset.monsterKey] = { name: row.dataset.monsterName || row.dataset.monsterKey, [field]: value };
+    const checkbox = row.querySelector(field === 'unlimited' ? '.monster-unlimited' : '.monster-enabled');
+    if (checkbox) checkbox.checked = value;
+  }
+  if (Object.keys(patch).length === 0) return;
+  const result = await updateCanonicalConfig({ monsters: { maps: { [areaKey]: patch } } });
+  if (!result?.success) {
+    appendLog('ERROR', result?.error || 'Could not update visible targets');
+    return;
+  }
+  monsterConfig = result.config?.monsters || monsterConfig;
+  await selectMonsterArea(areaKey, true);
+}
+
+btnTargetUnlimitedAll?.addEventListener('click', () => setAllVisibleTargets('unlimited', true));
+btnTargetEnableAll?.addEventListener('click', () => setAllVisibleTargets('enabled', true));
 
 async function selectMonsterArea(areaKey, force = false) {
   const area = monsterCatalog.find(candidate => candidate.key === areaKey);

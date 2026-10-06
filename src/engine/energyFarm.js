@@ -7,7 +7,7 @@ class EnergyFarmEngine {
     this.chapterFarmer = chapterFarmer;
   }
 
-  async farmChapter(accountName, targetManga, chapterNum = 1, reactionType = 'random') {
+  async farmChapter(accountName, targetManga, chapterNum = 1, reactionType = 'random', chapterUrl = null, options = {}) {
     const slug = String(targetManga || '')
       .replace(/^https?:\/\/[^/]+\/(?:manga|title)\//i, '')
       .split(/[/?#]/)[0];
@@ -15,11 +15,13 @@ class EnergyFarmEngine {
       accountName,
       slug,
       chapterNum,
-      reactionType
+      reactionType,
+      null,
+      { chapterUrl, delayMs: options.delayMs },
     );
     return {
       ...result,
-      energy: result.success ? 2 : 0,
+      energy: result.success ? Math.max(0, Number(result.energy) || 0) : 0,
     };
   }
 

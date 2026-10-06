@@ -1,3 +1,5 @@
+const { staminaMinimumAmount } = require('./resourcePolicyEngine');
+
 const NORMAL_ATTACKS = Object.freeze([
   Object.freeze({ multiplier: 1, id: 0, name: 'Slash x1', stamCost: 1 }),
   Object.freeze({ multiplier: 10, id: -1, name: 'Slash x10', stamCost: 10 }),
@@ -43,9 +45,7 @@ class AttackPlanner {
     const policy = this.config.combat?.attackStrategy || {};
     const mode = policy.mode === 'adaptive' ? 'adaptive' : 'fixed';
     const progression = state.progression || {};
-    const reserve = progression.ignoreSoftStaminaRules === true
-      ? 0
-      : Math.max(0, Math.trunc(Number(this.config.combat?.staminaReserve) || 0));
+    const reserve = staminaMinimumAmount(this.config, state);
     const budget = Math.max(0, Math.trunc(Number(state.stamina) || 0) - reserve);
     const maxMultiplier = normalizeMultiplier(policy.maxMultiplier, 200);
     const fixedMultiplier = normalizeMultiplier(policy.fixedMultiplier, 1);
@@ -86,7 +86,8 @@ class AttackPlanner {
 
     if (mode === 'adaptive' && policy.requireTargetStamina === true && progression.ignoreSoftStaminaRules !== true) {
       const requiredStamina = Math.ceil(remainingDamage / baseDamage);
-      if (budget < requiredStamina) {
+      const refillStamina = Math.max(0, Number(progression.refillStamina) || 0);
+      if (budget + refillStamina < requiredStamina) {
         return {
           blocked: true,
           planning: {
@@ -95,6 +96,9 @@ class AttackPlanner {
             remainingDamage,
             requiredStamina,
             availableStamina: budget,
+            refillStamina,
+            reserveStamina: reserve,
+            reservePercent: Math.max(0, Number(this.config.resources?.stamina?.keepMin) || 0),
           },
         };
       }
@@ -214,7 +218,7 @@ class AttackPlanner {
       .filter(skill => {
         const role = objectiveAbilityId === Number(skill?.id)
           ? 'attack'
-          : this.config.combat?.abilityPolicies?.[String(skill?.id)]?.role || (skill?.passive ? 'passive' : 'attack');
+          : this.config.combat?.abilityPolicies?.[String(skill?.id)]?.role || (skill?.passive ? 'passive' : 'select');
         return skill?.owned === true && skill.passive !== true && role === 'attack' && allowedIds.has(Number(skill.id));
       })
       .map(skill => {

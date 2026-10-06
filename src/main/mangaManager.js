@@ -7,15 +7,31 @@
 const fs = require('fs');
 const path = require('path');
 const { Logger } = require('./logger');
-const { getDataDir } = require('./dataPaths');
+const { getDataDirectory } = require('../dataDirectory');
+const { normalizeMangaInput, parseChapterCatalog } = require('../engine/chapterCatalog');
 
 class MangaManager {
-  constructor(dataDir) {
-    this.dataDir = dataDir || getDataDir();
+  constructor(dataDir, options = {}) {
+    this.httpClient = null;
+    this._setPaths(dataDir || getDataDirectory());
+    if (options.deferInitialization !== true) this.ensureFiles();
+  }
+
+  _setPaths(dataDir) {
+    this.dataDir = path.resolve(dataDir);
     this.jsonPath = path.join(this.dataDir, 'manga_list.json');
     this.accountDataPath = path.join(this.dataDir, 'account_manga.json');
     this.logPath = path.join(this.dataDir, 'manga.log');
+  }
+
+  setDataDirectory(dataDir) {
+    this._setPaths(dataDir || getDataDirectory());
     this.ensureFiles();
+    return this.dataDir;
+  }
+
+  setHttpClient(httpClient) {
+    this.httpClient = httpClient || null;
   }
 
   ensureFiles() {
@@ -88,6 +104,9 @@ class MangaManager {
       .map((m) => ({
         ...m,
         farmedCount: farmed[m.slug] || 0,
+        farmedChapterNumbers: Array.isArray(userAcc.farmedChapterNumbers?.[m.slug])
+          ? [...userAcc.farmedChapterNumbers[m.slug]]
+          : Array.from({ length: Math.max(0, Number(farmed[m.slug]) || 0) }, (_, index) => index + 1),
       }));
   }
 
@@ -114,22 +133,21 @@ class MangaManager {
   }
 
   normalizeInput(input) {
-    let clean = input.trim();
-    if (!clean) return null;
+    return normalizeMangaInput(input);
+  }
 
-    let slug = '';
-    let url = '';
-
-    if (clean.startsWith('http://') || clean.startsWith('https://')) {
-      url = clean;
-      const match = clean.match(/\/manga\/([^/?#]+)/i);
-      slug = match ? match[1] : clean.split('/').filter(Boolean).pop();
-    } else {
-      slug = clean.replace(/\s+/g, '-');
-      url = `https://demonicscans.org/manga/${slug}`;
+  async _fetchPage(url) {
+    if (this.httpClient) {
+      const response = await this.httpClient.get(url, { retries: 1 });
+      return { ok: response.ok, status: response.status, text: response.text || '' };
     }
-
-    return { slug, url };
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
+    });
+    return { ok: response.ok, status: response.status, text: await response.text() };
   }
 
   async verifyAndAdd(input, accountName) {
@@ -154,18 +172,16 @@ class MangaManager {
           this.saveAccountData(allAccountData);
         }
       }
+      if (!Array.isArray(existing.chapterEntries) || existing.chapterEntries.length === 0) {
+        return this.refreshSingleManga(existing.slug, accountName);
+      }
       return { success: true, manga: existing, list: this.getAccountMangaList(accountName) };
     }
 
     // Fetch page to verify and extract title & chapter count
     try {
       Logger.logApi(accountName, 'GET', norm.url, null, 'Fetching manga details');
-      const response = await fetch(norm.url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        },
-      });
+      const response = await this._fetchPage(norm.url);
 
       Logger.logApi(accountName, 'GET', norm.url, response.status, response.ok ? 'OK' : 'Error');
 
@@ -173,39 +189,21 @@ class MangaManager {
         return { success: false, error: `Failed to fetch manga page (Status: ${response.status}). Check name/URL.` };
       }
 
-      const html = await response.text();
-
-      // Extract Title
-      let title = norm.slug.replace(/-/g, ' ');
-      const titleMatch = html.match(/<h1[^>]*class="[^"]*big-fat-titles[^"]*"[^>]*>([^<]+)<\/h1>/i) ||
-                         html.match(/<title>([^<]+)<\/title>/i);
-      if (titleMatch && titleMatch[1]) {
-        title = titleMatch[1].trim();
-      }
-
-      // Extract Chapter Count
-      let chapters = 0;
-      const chapterCountMatch = html.match(/<h2[^>]*>(\d+)\s+Chapters?\s+Available<\/h2>/i);
-      if (chapterCountMatch) {
-        chapters = parseInt(chapterCountMatch[1], 10) || 0;
-      } else {
-        const chapterLinks = html.match(/href="[^"]*chaptered\.php\?[^"]*chapter=\d+[^"]*"/gi);
-        if (chapterLinks) {
-          chapters = chapterLinks.length;
-        }
-      }
+      const catalog = parseChapterCatalog(response.text, norm.url, norm);
+      if (!catalog.recognized) return { success: false, error: 'The page loaded, but no supported chapter list was found.' };
 
       const newManga = {
         slug: norm.slug,
-        title: title,
+        title: catalog.title,
         url: norm.url,
-        chapters: chapters,
+        chapters: catalog.chapters,
+        chapterEntries: catalog.chapterEntries,
         addedAt: new Date().toISOString(),
       };
 
       currentList.push(newManga);
       this.saveList(currentList);
-      this.logEntry(`Added "${title}" (${chapters} chapters) - ${norm.url}`);
+      this.logEntry(`Added "${catalog.title}" (${catalog.chapters} chapters) - ${norm.url}`);
 
       return {
         success: true,
@@ -249,7 +247,7 @@ class MangaManager {
   /**
    * Increments farmed chapter count for a specific account
    */
-  incrementFarmedCount(accountName, targetManga) {
+  incrementFarmedCount(accountName, targetManga, chapterNumber = null) {
     if (!accountName) return;
     const norm = this.normalizeInput(targetManga);
     const slug = norm ? norm.slug : targetManga;
@@ -261,10 +259,30 @@ class MangaManager {
     if (!allAccountData[accountName].farmedChapters) {
       allAccountData[accountName].farmedChapters = {};
     }
-
-    allAccountData[accountName].farmedChapters[slug] = (allAccountData[accountName].farmedChapters[slug] || 0) + 1;
+    if (!allAccountData[accountName].farmedChapterNumbers) allAccountData[accountName].farmedChapterNumbers = {};
+    const known = new Set((allAccountData[accountName].farmedChapterNumbers[slug]
+      || Array.from({ length: Math.max(0, Number(allAccountData[accountName].farmedChapters[slug]) || 0) }, (_, index) => index + 1)).map(Number));
+    const chapter = Number(chapterNumber);
+    if (Number.isFinite(chapter) && chapter > 0) known.add(chapter);
+    else known.add((Number(allAccountData[accountName].farmedChapters[slug]) || 0) + 1);
+    allAccountData[accountName].farmedChapterNumbers[slug] = [...known].sort((left, right) => left - right);
+    allAccountData[accountName].farmedChapters[slug] = known.size;
     this.saveAccountData(allAccountData);
     this.logEntry(`Account [${accountName}] farmed a chapter of "${slug}" (Total: ${allAccountData[accountName].farmedChapters[slug]})`);
+  }
+
+  resetFarmCycle(accountName, cycleId) {
+    if (!accountName || !Number.isFinite(Number(cycleId))) return false;
+    const allAccountData = this.getAccountData();
+    const account = allAccountData[accountName] || { hiddenSlugs: [], farmSettings: {} };
+    if (Number(account.farmCycleId) === Number(cycleId)) return false;
+    account.farmCycleId = Number(cycleId);
+    account.farmedChapters = {};
+    account.farmedChapterNumbers = {};
+    allAccountData[accountName] = account;
+    this.saveAccountData(allAccountData);
+    this.logEntry(`Account [${accountName}] started Chapter reward cycle ${cycleId}`);
+    return true;
   }
 
   saveAccountFarmSettings(accountName, settings) {
@@ -331,12 +349,7 @@ class MangaManager {
     const manga = list[index];
     try {
       Logger.logApi(accountName, 'GET', manga.url, null, `Refreshing manga "${manga.title || manga.slug}"`);
-      const response = await fetch(manga.url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        },
-      });
+      const response = await this._fetchPage(manga.url);
 
       Logger.logApi(accountName, 'GET', manga.url, response.status, response.ok ? 'OK' : 'Error');
 
@@ -344,28 +357,11 @@ class MangaManager {
         return { success: false, error: `Failed to fetch manga page (Status: ${response.status})` };
       }
 
-      const html = await response.text();
-      let title = manga.title;
-      const titleMatch = html.match(/<h1[^>]*class="[^"]*big-fat-titles[^"]*"[^>]*>([^<]+)<\/h1>/i) ||
-                         html.match(/<title>([^<]+)<\/title>/i);
-      if (titleMatch && titleMatch[1]) {
-        title = titleMatch[1].trim();
-      }
-      let chapters = manga.chapters;
-      const chapterCountMatch = html.match(/<h2[^>]*>(\d+)\s+Chapters?\s+Available<\/h2>/i);
-      if (chapterCountMatch) {
-        chapters = parseInt(chapterCountMatch[1], 10) || 0;
-      } else {
-        const chapterLinks = html.match(/href="[^"]*chaptered\.php\?[^"]*chapter=\d+[^"]*"/gi);
-        if (chapterLinks) {
-          chapters = chapterLinks.length;
-        }
-      }
-
-      list[index].title = title;
-      list[index].chapters = chapters;
+      const catalog = parseChapterCatalog(response.text, manga.url, manga);
+      if (!catalog.recognized) return { success: false, error: 'The page loaded, but no supported chapter list was found.' };
+      list[index] = { ...manga, ...catalog };
       this.saveList(list);
-      this.logEntry(`Refreshed "${title}" (${chapters} chapters)`);
+      this.logEntry(`Refreshed "${catalog.title}" (${catalog.chapters} chapters)`);
 
       return {
         success: true,
@@ -388,34 +384,14 @@ class MangaManager {
       const manga = list[i];
       try {
         Logger.logApi(accountName, 'GET', manga.url, null, `Refreshing all: "${manga.slug}"`);
-        const response = await fetch(manga.url, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          },
-        });
+        const response = await this._fetchPage(manga.url);
         Logger.logApi(accountName, 'GET', manga.url, response.status, response.ok ? 'OK' : 'Error');
         if (response.ok) {
-          const html = await response.text();
-          let title = manga.title;
-          const titleMatch = html.match(/<h1[^>]*class="[^"]*big-fat-titles[^"]*"[^>]*>([^<]+)<\/h1>/i) ||
-                             html.match(/<title>([^<]+)<\/title>/i);
-          if (titleMatch && titleMatch[1]) {
-            title = titleMatch[1].trim();
+          const catalog = parseChapterCatalog(response.text, manga.url, manga);
+          if (catalog.recognized) {
+            list[i] = { ...manga, ...catalog };
+            updatedCount++;
           }
-          let chapters = manga.chapters;
-          const chapterCountMatch = html.match(/<h2[^>]*>(\d+)\s+Chapters?\s+Available<\/h2>/i);
-          if (chapterCountMatch) {
-            chapters = parseInt(chapterCountMatch[1], 10) || 0;
-          } else {
-            const chapterLinks = html.match(/href="[^"]*chaptered\.php\?[^"]*chapter=\d+[^"]*"/gi);
-            if (chapterLinks) {
-              chapters = chapterLinks.length;
-            }
-          }
-          list[i].title = title;
-          list[i].chapters = chapters;
-          updatedCount++;
         }
       } catch (err) {
         Logger.logApi(accountName, 'GET', manga.url, 0, `Exception: ${err.message}`);
@@ -426,17 +402,6 @@ class MangaManager {
     this.logEntry(`Refreshed chapter counts for ${updatedCount} manga(s)`);
     return { success: true, count: updatedCount, list: this.getAccountMangaList(accountName) };
   }
-  /**
-   * Reinitialize the data directory after app.getPath becomes available.
-   * @param {string} [dataDir]
-   */
-  init(dataDir) {
-    this.dataDir = dataDir || getDataDir();
-    this.jsonPath = path.join(this.dataDir, 'manga_list.json');
-    this.accountDataPath = path.join(this.dataDir, 'account_manga.json');
-    this.logPath = path.join(this.dataDir, 'manga.log');
-    this.ensureFiles();
-  }
 }
 
-module.exports = { MangaManager, mangaManager: new MangaManager() };
+module.exports = { MangaManager, mangaManager: new MangaManager(undefined, { deferInitialization: true }) };

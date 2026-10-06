@@ -5,14 +5,14 @@
 
 const fs = require('fs');
 const path = require('path');
-const { getDataDir } = require('./dataPaths');
+const { getDataPath } = require('../dataDirectory');
 
 class SessionManager {
   /**
    * @param {string} [storagePath]
    */
   constructor(storagePath) {
-    this.storagePath = storagePath || path.join(getDataDir(), 'sessions.json');
+    this.storagePath = storagePath || getDataPath('sessions.json');
     if (fs.existsSync(this.storagePath) && process.platform !== 'win32') {
       try {
         fs.chmodSync(this.storagePath, 0o600);

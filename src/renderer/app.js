@@ -18,6 +18,7 @@ let lootingConfig = { maps: {} };
 let autoFarmConfig = { maps: {}, settings: {} };
 let adventureQuestConfig = { quests: {} };
 let battlePassConfig = { enabled: false, areaKey: 'grakthar_3', lootIfAchievable: false, safeCheck: false, targets: {} };
+let bossHuntConfig = { targets: {} };
 let progressionProfilesConfig = { activeId: 'default', profiles: {} };
 let latestAdventureQuestState = null;
 let latestBattlePassState = null;
@@ -231,6 +232,7 @@ function resetAccountScopedRendererState() {
   autoFarmConfig = { maps: {}, settings: {} };
   adventureQuestConfig = { quests: {} };
   battlePassConfig = { enabled: false, areaKey: 'grakthar_3', lootIfAchievable: false, safeCheck: false, targets: {} };
+  bossHuntConfig = { targets: {} };
   progressionProfilesConfig = { activeId: 'default', profiles: {} };
   latestAdventureQuestState = null;
   latestBattlePassState = null;
@@ -259,7 +261,7 @@ function resetAccountScopedRendererState() {
   runtimeDryRun = true;
   updateAutoFarmEligibility(null);
   renderBotModeState();
-  for (const container of [monsterAreaContent, lootAreaContent, targetHistoryContent, lootHistoryContent,
+  for (const container of [monsterAreaContent, bossHuntContent, lootAreaContent, targetHistoryContent, lootHistoryContent,
     progressionHistoryContent, autoFarmTargetContent, autoFarmServerTargetsContent]) {
     container?.replaceChildren();
   }
@@ -295,6 +297,7 @@ const viewLootConfig = document.getElementById('viewLootConfig');
 const viewStatistics = document.getElementById('viewStatistics');
 const viewBattlePass = document.getElementById('viewBattlePass');
 const viewAdventureQuests = document.getElementById('viewAdventureQuests');
+const viewBossHunt = document.getElementById('viewBossHunt');
 const viewConsole = document.getElementById('viewConsole');
 
 const tabContainer = document.getElementById('tabContainer');
@@ -309,6 +312,7 @@ const tabLootConfigBtn = document.getElementById('tabLootConfigBtn');
 const tabStatisticsBtn = document.getElementById('tabStatisticsBtn');
 const tabBattlePassBtn = document.getElementById('tabBattlePassBtn');
 const tabAdventureQuestsBtn = document.getElementById('tabAdventureQuestsBtn');
+const tabBossHuntBtn = document.getElementById('tabBossHuntBtn');
 const tabConsoleBtn = document.getElementById('tabConsoleBtn');
 
 // Home Subtabs
@@ -351,7 +355,6 @@ const progressionDungeonSourceCount = document.getElementById('progressionDungeo
 const progressionEventSourceCount = document.getElementById('progressionEventSourceCount');
 const progressionGateSourceCount = document.getElementById('progressionGateSourceCount');
 const rowProgressionChapterFallback = document.getElementById('rowProgressionChapterFallback');
-const rowProgressionDrainBeforeLoot = document.getElementById('rowProgressionDrainBeforeLoot');
 const progressionCurrentState = document.getElementById('progressionCurrentState');
 const progressionLootXp = document.getElementById('progressionLootXp');
 const progressionLootScan = document.getElementById('progressionLootScan');
@@ -381,6 +384,9 @@ const battlePassTargetsContent = document.getElementById('battlePassTargetsConte
 const adventureQuestStatus = document.getElementById('adventureQuestStatus');
 const adventureQuestList = document.getElementById('adventureQuestList');
 const btnRefreshAdventureQuests = document.getElementById('btnRefreshAdventureQuests');
+const bossHuntContent = document.getElementById('bossHuntContent');
+const bossHuntStatus = document.getElementById('bossHuntStatus');
+const btnRefreshBossHunt = document.getElementById('btnRefreshBossHunt');
 // The old duplicate available-loot view was replaced by the shared Lootable
 // workspace and persistent Progression history.
 const btnRefreshAvailableLoot = null;
@@ -416,6 +422,9 @@ const modalModuleInfo = document.getElementById('modalModuleInfo');
 const moduleInfoTitle = document.getElementById('moduleInfoTitle');
 const moduleInfoBody = document.getElementById('moduleInfoBody');
 const btnCloseModuleInfo = document.getElementById('btnCloseModuleInfo');
+const btnBotSetupPageInfo = document.getElementById('btnBotSetupPageInfo');
+const btnCombatPageInfo = document.getElementById('btnCombatPageInfo');
+const btnProgressionPageInfo = document.getElementById('btnProgressionPageInfo');
 const inputKeepStaminaMin = document.getElementById('inputKeepStaminaMin');
 const inputKeepStaminaMax = document.getElementById('inputKeepStaminaMax');
 const inputStopStaminaBelow = document.getElementById('inputStopStaminaBelow');
@@ -446,8 +455,12 @@ const progressionStaminaPotionCounters = Object.freeze({
 });
 const inputSleepHealthBelow = document.getElementById('inputSleepHealthBelow');
 const inputMaxDeaths = document.getElementById('inputMaxDeaths');
+const healthDeathsUsed = document.getElementById('healthDeathsUsed');
 const chkUseHealingPotions = document.getElementById('chkUseHealingPotions');
 const inputMaxHealingPotions = document.getElementById('inputMaxHealingPotions');
+const rowHealingPotionLimit = document.getElementById('rowHealingPotionLimit');
+const healthPotsUsed = document.getElementById('healthPotsUsed');
+const healthPotsAvailable = document.getElementById('healthPotsAvailable');
 const chkBuyHealthPotion = document.getElementById('chkBuyHealthPotion');
 const inputMaxHealthPotionPurchases = document.getElementById('inputMaxHealthPotionPurchases');
 const healthPotsPurchasedCount = document.getElementById('healthPotsPurchasedCount');
@@ -456,6 +469,10 @@ const chkAllowManaPotions = document.getElementById('chkAllowManaPotions');
 const selectManaPotionPriority = document.getElementById('selectManaPotionPriority');
 const inputSmallManaPotLimit = document.getElementById('inputSmallManaPotLimit');
 const inputLargeManaPotLimit = document.getElementById('inputLargeManaPotLimit');
+const smallManaPotsUsed = document.getElementById('smallManaPotsUsed');
+const smallManaPotsAvailable = document.getElementById('smallManaPotsAvailable');
+const largeManaPotsUsed = document.getElementById('largeManaPotsUsed');
+const largeManaPotsAvailable = document.getElementById('largeManaPotsAvailable');
 const inputKeepManaMin = document.getElementById('inputKeepManaMin');
 const inputKeepManaMax = document.getElementById('inputKeepManaMax');
 const chkBuyManaPotion = document.getElementById('chkBuyManaPotion');
@@ -467,6 +484,7 @@ const homeRuntimeStatus = document.getElementById('homeRuntimeStatus');
 const overviewCurrentPanel = document.getElementById('overviewCurrentPanel');
 const homeSetupTabs = document.getElementById('homeSetupTabs');
 const overviewTargetName = document.getElementById('overviewTargetName');
+const overviewRuntimeBadge = document.getElementById('overviewRuntimeBadge');
 const overviewActionReason = document.getElementById('overviewActionReason');
 const overviewProgressFill = document.getElementById('overviewProgressFill');
 const overviewProgressText = document.getElementById('overviewProgressText');
@@ -546,6 +564,8 @@ const targetAreaTypeSelect = document.getElementById('targetAreaTypeSelect');
 const monsterAreaContent = document.getElementById('monsterAreaContent');
 const btnRefreshMonsterArea = document.getElementById('btnRefreshMonsterArea');
 const btnCollectMonsterStats = document.getElementById('btnCollectMonsterStats');
+const btnTargetUnlimitedAll = document.getElementById('btnTargetUnlimitedAll');
+const btnTargetEnableAll = document.getElementById('btnTargetEnableAll');
 const cubePvpTargetPanel = document.getElementById('cubePvpTargetPanel');
 const cubePvpTargetStatus = document.getElementById('cubePvpTargetStatus');
 const cubePvpTargetContent = document.getElementById('cubePvpTargetContent');
@@ -554,6 +574,8 @@ const lootAreaSelect = document.getElementById('lootAreaSelect');
 const lootAreaTypeSelect = document.getElementById('lootAreaTypeSelect');
 const lootAreaContent = document.getElementById('lootAreaContent');
 const btnRefreshLootArea = document.getElementById('btnRefreshLootArea');
+const btnLootUnlimitedAll = document.getElementById('btnLootUnlimitedAll');
+const btnLootEnableAll = document.getElementById('btnLootEnableAll');
 const subtabTargetsConfigBtn = document.getElementById('subtabTargetsConfigBtn');
 const subtabTargetsHistoryBtn = document.getElementById('subtabTargetsHistoryBtn');
 const subviewTargetsConfig = document.getElementById('subviewTargetsConfig');
@@ -690,6 +712,7 @@ const rowManualFarmControls = document.getElementById('rowManualFarmControls');
 const selectManualManga = document.getElementById('selectManualManga');
 const inputManualChapterCount = document.getElementById('inputManualChapterCount');
 const btnStartManualFarm = document.getElementById('btnStartManualFarm');
+const btnChaptersPageInfo = document.getElementById('btnChaptersPageInfo');
 const workingMangaText = document.getElementById('workingMangaText');
 const btnConfigScheduler = document.getElementById('btnConfigScheduler');
 const btnConfigIndependent = document.getElementById('btnConfigIndependent');
@@ -928,10 +951,9 @@ let DUNGEON_MAPS = [
   ['shadowbridge_warrens', 'Shadowbridge Warrens'],
   ['polyhedral_crucible', 'The Polyhedral Crucible'],
 ];
-let EVENT_MAPS = [
-  ['event_black_crown_ascends', 'The Black Crown Ascends'],
-];
-
+// Event areas are populated from the active/custom area catalog. Ended events
+// are deliberately not kept in this visible bootstrap list.
+let EVENT_MAPS = [];
 function applyMonsterCatalog(areas = []) {
   monsterCatalog = Array.isArray(areas) ? areas : [];
   const options = type => monsterCatalog
@@ -1008,6 +1030,10 @@ const MODULE_DESCRIPTIONS = {
     title: 'Event module',
     body: 'Runs The Black Crown Ascends from its fixed Event wave. It uses the same Target, Combat, Health, pacing, and normal battle rules as Gates.',
   },
+  boss_hunt: {
+    title: 'Boss Hunt module',
+    body: 'Considers enabled Boss Hunt rows across every accessible Gate and Event. Its settings and completion counters are independent from Targets, Battle Pass, and Adventurer Quests.',
+  },
   auto_farm: {
     title: 'Auto Farm module',
     body: 'Synchronizes the selected Gate or Event targets with the game server Auto Farm and then enables it. Normal Combat, Health, Mana, Stamina, Looting, and Progression decisions are suspended until this module is stopped or changed.',
@@ -1066,6 +1092,95 @@ function showInfoDialog(description) {
   modalModuleInfo.style.display = 'flex';
 }
 
+const PAGE_HELP = Object.freeze({
+  setup: {
+    title: 'Bot Setup guide',
+    body: 'Module chooses the activity Veybot runs. Gate, Dungeon, or Event chooses where that module works. Progression config selects the resource and leveling policy.\n\nStamina controls when ordinary combat may continue. Health controls healing, death limits, and optional potion buying. Mana controls when class abilities may restore Mana. A Max Deaths value of 0 means unlimited.',
+  },
+  combat: {
+    title: 'Combat guide',
+    body: 'Fixed always requests the selected normal hit when it is affordable. Adaptive learns damage from server results and chooses a permitted hit for the remaining target.\n\nAllowed target overshoot is how far an Adaptive estimate may exceed the remaining target damage. Force x1 near target overrides that choice after Target progress reached is met. For example, 80% means all later normal hits are x1.\n\nClass abilities remain unused until you classify each one as Attack, Buff, Debuff, or Passive and explicitly allow it.',
+  },
+  progression: {
+    title: 'Progression guide',
+    body: 'Progression decides whether to bank loot for a level, farm Chapters, use an allowed Stamina potion, or wait. Loot is claimed only when verified eligible rewards can produce a level. Veybot always drains usable Stamina before claiming that level-up loot.\n\nSource lists decide which Dungeons, Events, and Gates may contribute loot. Chapter fallback and potion limits are separate fallback permissions.',
+  },
+  chapters: {
+    title: 'Chapter farming guide',
+    body: 'Manual posts the requested number of chapter reactions immediately. Automatic only permits Progression to use Chapters as a fallback; Allow Chapter fallback must also be enabled in Progression.\n\nAdd a manga using its title page URL, then Refresh after new chapters are published. Safety limits stop a manual run before Max Stamina, the configured farm target, or an hourly refill window. Each confirmed reaction restores 2 Stamina and is recorded once for the current 12-hour reward cycle.',
+  },
+});
+
+function addPageHelpTooltips(root, descriptions = {}) {
+  if (!root) return;
+  for (const row of root.querySelectorAll('.form-tree-row')) {
+    const label = row.querySelector('.form-tree-label')?.textContent?.replace(/\s+/g, ' ').trim();
+    if (!label) continue;
+    const control = row.querySelector('input, select, button');
+    row.title = descriptions[control?.id]
+      || `${label}: configure how this page behaves. Disabled rows do not apply to the selected module or parent option.`;
+  }
+}
+
+function showTabGuideOnce(tab, accountName) {
+  const page = { botSetup: 'setup', combat: 'combat', energyFarm: 'progression' }[tab];
+  const identity = String(accountName || '').trim();
+  if (!page || !identity || !modalModuleInfo) return;
+  const key = `veybot:onboarding:${encodeURIComponent(identity)}:${page}:v2`;
+  if (localStorage.getItem(key) === 'seen') return;
+  localStorage.setItem(key, 'seen');
+  showInfoDialog(PAGE_HELP[page]);
+}
+
+btnBotSetupPageInfo?.addEventListener('click', () => showInfoDialog(PAGE_HELP.setup));
+btnCombatPageInfo?.addEventListener('click', () => showInfoDialog(PAGE_HELP.combat));
+btnProgressionPageInfo?.addEventListener('click', () => showInfoDialog(PAGE_HELP.progression));
+btnChaptersPageInfo?.addEventListener('click', () => showInfoDialog(PAGE_HELP.chapters));
+
+addPageHelpTooltips(document.getElementById('subviewHomeGeneral'), {
+  selectGeneralModule: 'Choose the activity Veybot should run. Settings unrelated to that module stay visible but disabled.',
+  selectGeneralMap: 'Choose the Gate for ordinary Gate combat. Switching modules preserves your last Gate choice.',
+  selectGeneralDungeonMap: 'Choose the Dungeon whose configured targets may be attacked.',
+  selectGeneralEventMap: 'Choose an Event added through Settings → Gates. Event routes use event and wave identifiers.',
+  inputKeepStaminaMin: 'Ordinary combat preserves this percentage of maximum Stamina. Progression can spend below it when an allowed refill is available.',
+  inputKeepStaminaMax: 'Upper percentage of the base Stamina range.',
+  inputStopStaminaBelow: 'Stop automation when Stamina falls below this percentage. A value of 0 disables this hard stop.',
+  inputSleepHealthBelow: 'At or below this HP percentage, heal before attacking again. Allowed Healing Potions take priority over timed healing.',
+  inputMaxDeaths: 'Stop after this many verified combat deaths. Use 0 for unlimited deaths.',
+  chkUseHealingPotions: 'Allow a verified Healing Potion before timed healing when HP reaches the healing threshold.',
+  inputMaxHealingPotions: 'Maximum Healing Potions Veybot may use during this run.',
+  inputSmallManaPotLimit: 'Maximum Small Mana Potions Veybot may consume during this run.',
+  inputLargeManaPotLimit: 'Maximum Large Mana Potions Veybot may consume during this run.',
+  chkBuyHealthPotion: 'Allow buying a Healing Potion when needed, within the configured purchase count.',
+  inputMaxHealthPotionPurchases: 'Maximum Healing Potions Veybot may purchase. A confirmed purchase increases the counter.',
+  chkAllowManaPotions: 'Allow Mana potions to refill from the minimum Mana setting toward the maximum.',
+  selectManaPotionPriority: 'Try this Mana potion first, then another allowed potion if needed.',
+  inputKeepManaMin: 'Begin Mana restoration at this value. Values use increments of 20 Mana.',
+  inputKeepManaMax: 'Stop restoring Mana at this value. Small Mana potions may be consumed in batches of up to 10.',
+  chkBuyManaPotion: 'Allow buying Small Mana Potions when needed, within the configured purchase count.',
+  inputMaxManaPotionPurchases: 'Maximum Mana Potions Veybot may purchase. A confirmed purchase increases the counter.',
+});
+addPageHelpTooltips(document.getElementById('subviewHomeEquipment'), {
+  inputAttackOvershoot: 'Adaptive mode may exceed the remaining target damage by at most this percentage when choosing a normal hit.',
+  chkAdaptiveFailSafe: 'Force normal attacks to x1 after the configured target-progress threshold is reached.',
+  inputAdaptiveFailSafePercent: 'The target contribution percentage at which Force x1 begins. This only applies when Force x1 near target is enabled.',
+  selectAttackModule: 'Fixed uses the selected hit. Adaptive uses learned damage to choose a hit for the remaining target.',
+  selectFixedAttack: 'The normal hit requested in Fixed mode, with a smaller affordable hit when needed.',
+  selectAdaptiveMaxAttack: 'Largest normal hit Adaptive may choose. Class abilities have separate permissions.',
+  chkRequireTargetStamina: 'Wait for an allowed refill if current Stamina cannot reach the target damage. Chapter fallback and potions remain available.',
+  chkAllowClassAbilities: 'Allow only abilities you have classified and enabled. Select and Passive are never executed.',
+});
+addPageHelpTooltips(document.getElementById('subviewStaminaGeneral'));
+addPageHelpTooltips(document.getElementById('subviewChaptersFarm'), {
+  selectFarmModule: 'Manual runs only when you press Start. Automatic allows Progression to use Chapters as a fallback when its separate permission is enabled.',
+  inputManualChapterCount: 'Number of confirmed chapter reactions to post in this manual run.',
+  chkStopMaxStamina: 'Stop manual farming when current Stamina reaches the account maximum.',
+  inputMaxStaminaFarm: 'Stop manual farming when current farmed-energy progress reaches this value.',
+  inputStopHourlyStaminaMin: 'Do not begin another manual reaction this many minutes before the hourly Stamina refill.',
+  selectReactionType: 'Reaction sent to each chapter. Random chooses one of the five reactions for every request.',
+  inputMangaTarget: 'Use a supported manga title page URL. Veybot reads its real chapter links instead of guessing their route.',
+});
+
 if (btnModuleInfo) btnModuleInfo.addEventListener('click', () => {
   showInfoDialog(MODULE_DESCRIPTIONS[selectGeneralModule?.value] || MODULE_DESCRIPTIONS.idle);
 });
@@ -1081,15 +1196,15 @@ if (modalModuleInfo) {
 
 function replaceMapOptions(select, maps, preferred = null) {
   if (!select) return;
+  const current = select.value;
   select.replaceChildren(...maps.map(([value, label]) => {
     const option = document.createElement('option');
     option.value = value || '';
     option.textContent = label;
     return option;
   }));
-  if (preferred && [...select.options].some(option => option.value === preferred)) {
-    select.value = preferred;
-  }
+  const requested = preferred || current;
+  if (requested && [...select.options].some(option => option.value === requested)) select.value = requested;
 }
 
 function updateGeneralMaps(preferredMap = null, preferredDungeonMap = null, preferredGateMap = null, preferredEventMap = null) {
@@ -1797,10 +1912,6 @@ function updateProgressionControls() {
   updateProgressionSourceCount(progressionDungeonSourceList, progressionDungeonSourceCount);
   updateProgressionSourceCount(progressionEventSourceList, progressionEventSourceCount);
   updateProgressionSourceCount(progressionGateSourceList, progressionGateSourceCount);
-  if (rowProgressionDrainBeforeLoot) {
-    rowProgressionDrainBeforeLoot.classList.toggle('module-setting-disabled', !lootLevelingEnabled);
-    rowProgressionDrainBeforeLoot.setAttribute('aria-disabled', String(!lootLevelingEnabled));
-  }
   renderProgressionStatus();
 }
 
@@ -1939,6 +2050,12 @@ function updatePotionPolicyControls() {
     control.disabled = !manaEnabled;
     control.closest('.form-tree-row')?.classList.toggle('module-setting-disabled', !manaEnabled);
   }
+  const healthEnabled = chkUseHealingPotions?.checked === true;
+  if (rowHealingPotionLimit) {
+    rowHealingPotionLimit.classList.toggle('module-setting-disabled', !healthEnabled);
+    rowHealingPotionLimit.setAttribute('aria-disabled', String(!healthEnabled));
+  }
+  if (inputMaxHealingPotions) inputMaxHealingPotions.disabled = !healthEnabled;
 }
 async function saveEquipmentConfig() {
   const equipment = {};
@@ -1989,6 +2106,10 @@ function updateAttackModuleRows() {
   if (rowAdaptiveNukeAbilities) rowAdaptiveNukeAbilities.style.display = adaptive ? 'flex' : 'none';
   if (rowAdaptiveFailSafePercent) {
     rowAdaptiveFailSafePercent.style.display = adaptive ? 'flex' : 'none';
+    const enabled = adaptive && chkAdaptiveFailSafe?.checked === true;
+    rowAdaptiveFailSafePercent.classList.toggle('module-setting-disabled', !enabled);
+    rowAdaptiveFailSafePercent.setAttribute('aria-disabled', String(!enabled));
+    if (inputAdaptiveFailSafePercent) inputAdaptiveFailSafePercent.disabled = !enabled;
   }
 }
 
@@ -2142,13 +2263,13 @@ function renderUnlockedAbilities(data) {
       else allowedCombatAbilityIds.delete(skill.id);
       saveAttackStrategy();
     });
-    const savedPolicy = combatAbilityPolicies[String(skill.id)] || { role: 'attack', maxUses: 0, initialWaitTurns: 0, reapplyTurns: 1, minimumNextAttackStamina: 0 };
+    const savedPolicy = combatAbilityPolicies[String(skill.id)] || { role: 'select', maxUses: 0, initialWaitTurns: 0, reapplyTurns: 1, minimumNextAttackStamina: 0 };
     const role = document.createElement('select');
     role.className = 'tree-select combat-ability-role';
-    for (const [value, label] of [['attack', 'Attack'], ['buff', 'Buff'], ['debuff', 'Debuff'], ['passive', 'Passive']]) {
+    for (const [value, label] of [['select', 'Select'], ['attack', 'Attack'], ['buff', 'Buff'], ['debuff', 'Debuff'], ['passive', 'Passive']]) {
       role.append(new Option(label, value));
     }
-    role.value = savedPolicy.role || 'attack';
+    role.value = savedPolicy.role || 'select';
     role.disabled = chkAllowClassAbilities?.checked !== true;
     role.title = 'Choose how the scheduler treats this ability.';
     const makePolicyInput = (value, min, label) => {
@@ -2170,11 +2291,11 @@ function renderUnlockedAbilities(data) {
       ? Number(savedPolicy.minimumNextAttackStamina) : 1);
     minimumNextAttack.title = 'Buff/Debuff only: use this support ability when the next damaging attack costs at least this much ST.';
     const updatePolicyAvailability = () => {
-      const disabled = chkAllowClassAbilities?.checked !== true || role.value === 'passive';
+      const disabled = chkAllowClassAbilities?.checked !== true || ['select', 'passive'].includes(role.value);
       checkbox.disabled = disabled;
       for (const input of [maxUses, initialWait, repeatWait]) input.disabled = disabled;
       minimumNextAttack.disabled = disabled || role.value === 'attack';
-      if (role.value === 'passive') checkbox.checked = false;
+      if (['select', 'passive'].includes(role.value)) checkbox.checked = false;
     };
     const savePolicy = () => {
       combatAbilityPolicies[String(skill.id)] = {
@@ -2189,7 +2310,7 @@ function renderUnlockedAbilities(data) {
       saveAttackStrategy();
     };
     role.addEventListener('change', () => {
-      if (role.value === 'passive') allowedCombatAbilityIds.delete(skill.id);
+      if (['select', 'passive'].includes(role.value)) allowedCombatAbilityIds.delete(skill.id);
       updatePolicyAvailability();
       populateNukeAttackOptions(activeClassSkills);
       savePolicy();
@@ -2326,6 +2447,7 @@ function loadHomeConfiguration(config) {
   autoFarmConfig = config.autoFarm || { maps: {}, settings: {} };
   adventureQuestConfig = config.adventureQuests || { quests: {}, drafts: {} };
   battlePassConfig = config.battlePass || { enabled: false, areaKey: 'grakthar_3', lootIfAchievable: false, safeCheck: false, targets: {} };
+  bossHuntConfig = config.bossHunt || { targets: {} };
   loadBattlePassPolicy();
   renderAdventureQuests(latestAdventureQuestState);
   areaCatalogConfig = config.areaCatalog || { custom: [], hidden: [] };
@@ -2409,8 +2531,8 @@ function loadSchedulerConfiguration(config) {
   const attackIntervals = config.scheduler?.attackIntervals || {};
   if (inputGateMinDelaySeconds) inputGateMinDelaySeconds.value = ((attackIntervals.gate?.minDelay || 1050) / 1000).toFixed(2);
   if (inputGateMaxDelaySeconds) inputGateMaxDelaySeconds.value = ((attackIntervals.gate?.maxDelay || 1200) / 1000).toFixed(2);
-  if (inputDungeonMinDelaySeconds) inputDungeonMinDelaySeconds.value = ((attackIntervals.dungeon?.minDelay || 10) / 1000).toFixed(2);
-  if (inputDungeonMaxDelaySeconds) inputDungeonMaxDelaySeconds.value = ((attackIntervals.dungeon?.maxDelay || 50) / 1000).toFixed(2);
+  if (inputDungeonMinDelaySeconds) inputDungeonMinDelaySeconds.value = ((attackIntervals.dungeon?.minDelay || 1000) / 1000).toFixed(2);
+  if (inputDungeonMaxDelaySeconds) inputDungeonMaxDelaySeconds.value = ((attackIntervals.dungeon?.maxDelay || 1200) / 1000).toFixed(2);
   if (inputLootScanIntervalMinutes) inputLootScanIntervalMinutes.value = Math.max(1, Number(config.scheduler?.lootScanIntervalMinutes) || 1);
   if (inputTargetScanIntervalSeconds) inputTargetScanIntervalSeconds.value = Math.max(1, Number(config.scheduler?.targetScanIntervalSeconds) || 1);
   savedDryRun = config.safety?.dryRun !== false;
@@ -2502,6 +2624,7 @@ for (const control of [
 }
 chkAllowStaminaPots?.addEventListener('change', updatePotionPolicyControls);
 chkAllowManaPotions?.addEventListener('change', updatePotionPolicyControls);
+chkUseHealingPotions?.addEventListener('change', updatePotionPolicyControls);
 updatePotionPolicyControls();
 async function resetPurchaseCounter(type) {
   const result = await updateCanonicalConfig({ resources: { [type]: { purchasedCount: 0 } } });
@@ -3320,6 +3443,7 @@ async function saveMonsterRow(areaKey, monsterKey, name, controls) {
     name,
     targetDamage: Math.max(0, Math.trunc(Number(controls.targetDamage.value) || 0)),
     killCount: Math.max(0, Math.trunc(Number(controls.killCount.value) || 0)),
+    dungeonKillCount: Math.max(0, Math.trunc(Number(controls.dungeonKillCount?.value) || 0)),
     unlimited: controls.unlimited.checked,
     priority: Math.max(0, Math.trunc(Number(controls.priority.value) || 0)),
     minimumHp: Math.max(0, Math.trunc(Number(controls.minimumHp.value) || 0)),
@@ -3518,7 +3642,7 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
   const header = document.createElement('div');
   header.className = 'monster-config-row monster-config-header';
   for (const [label, title] of [
-    ['Monster', 'Monster Name'], ['Alive', 'Currently alive / total discovered'], ['Stats', 'Monster stats'], ['Damage', 'Target damage'], ['Kills', 'Kill count'], ['∞', 'Unlimited targets'],
+    ['Monster', 'Monster Name'], ['Alive', 'Currently alive / total discovered'], ['Stats', 'Monster stats'], ['Damage', 'Target damage'], ['Kills', 'Total kill count'], ['Per dungeon', 'Dungeon only: maximum completed targets of this type in each dungeon instance; 0 disables this separate limit'], ['∞', 'Unlimited targets'],
     ['Pri', 'Priority — lower numbers run first'], ['Min HP', 'Minimum HP'],
     ['Done', 'Completed target count'], ['Gear', 'Gear set'], ['Pet', 'Pet set'],
     ['Potions', 'Stamina potion selection'], ['Skills', 'Allow all globally enabled abilities for this monster'], ['Target', 'Target enabled'],
@@ -3534,6 +3658,8 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
     const stored = saved[monster.key] || {};
     const row = document.createElement('div');
     row.className = 'monster-config-row';
+    row.dataset.monsterKey = monster.key;
+    row.dataset.monsterName = monster.name;
     const name = document.createElement('div');
     name.className = 'monster-config-name';
     const nameText = document.createElement('span');
@@ -3580,6 +3706,22 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
     killCount.value = stored.killCount ?? 0;
     killCount.className = 'monster-number-input';
     killCount.setAttribute('aria-label', `${monster.name} kill count`);
+
+    let dungeonKillCount;
+    if (area.type === 'dungeon') {
+      dungeonKillCount = document.createElement('input');
+      dungeonKillCount.type = 'number';
+      dungeonKillCount.min = '0';
+      dungeonKillCount.step = '1';
+      dungeonKillCount.value = stored.dungeonKillCount ?? 0;
+      dungeonKillCount.className = 'monster-number-input';
+      dungeonKillCount.title = 'Maximum targets of this type to complete in each dungeon instance. It resets automatically for a new instance. 0 uses the ordinary Kills limit.';
+      dungeonKillCount.setAttribute('aria-label', `${monster.name} per-dungeon kill count`);
+    } else {
+      dungeonKillCount = document.createElement('span');
+      dungeonKillCount.textContent = '—';
+      dungeonKillCount.title = 'Per-dungeon limits apply only to Dungeon areas.';
+    }
 
     const unlimited = document.createElement('input');
     unlimited.type = 'checkbox';
@@ -3649,8 +3791,8 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
     enabled.title = 'Include this monster type as an automation target.';
     enabled.setAttribute('aria-label', `Target ${monster.name}`);
 
-    const controls = { targetDamage, killCount, unlimited, priority, minimumHp, gearSet, petSet, staminaPotion, allowAbilities, enabled };
-    Object.values(controls).forEach(control => {
+    const controls = { targetDamage, killCount, dungeonKillCount: area.type === 'dungeon' ? dungeonKillCount : null, unlimited, priority, minimumHp, gearSet, petSet, staminaPotion, allowAbilities, enabled };
+    Object.values(controls).filter(Boolean).forEach(control => {
       control.addEventListener('change', () => {
         saveMonsterRow(area.key, monster.key, monster.name, controls);
       });
@@ -3662,7 +3804,7 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
       updateTargetLimitState();
       progressText.textContent = `${stored.completedCount || 0}/${unlimited.checked ? '∞' : (killCount.value || 0)}`;
     });
-    row.append(name, availability, statsButton, targetDamage, killCount, unlimited, priority, minimumHp, progress, gearSet, petSet, staminaPotion, allowAbilities, enabled);
+    row.append(name, availability, statsButton, targetDamage, killCount, dungeonKillCount, unlimited, priority, minimumHp, progress, gearSet, petSet, staminaPotion, allowAbilities, enabled);
     enhanceNumberInputs(row);
     table.appendChild(row);
   }
@@ -3670,6 +3812,28 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
   monsterAreaContent.replaceChildren(table);
   refreshLucideIcons(monsterAreaContent);
 }
+
+async function setAllVisibleTargets(field, value) {
+  const areaKey = activeMonsterAreaKey;
+  if (!areaKey) return;
+  const patch = {};
+  for (const row of monsterAreaContent?.querySelectorAll('.monster-config-row[data-monster-key]') || []) {
+    patch[row.dataset.monsterKey] = { name: row.dataset.monsterName || row.dataset.monsterKey, [field]: value };
+    const checkbox = row.querySelector(field === 'unlimited' ? '.monster-unlimited' : '.monster-enabled');
+    if (checkbox) checkbox.checked = value;
+  }
+  if (Object.keys(patch).length === 0) return;
+  const result = await updateCanonicalConfig({ monsters: { maps: { [areaKey]: patch } } });
+  if (!result?.success) {
+    appendLog('ERROR', result?.error || 'Could not update visible targets');
+    return;
+  }
+  monsterConfig = result.config?.monsters || monsterConfig;
+  await selectMonsterArea(areaKey, true);
+}
+
+btnTargetUnlimitedAll?.addEventListener('click', () => setAllVisibleTargets('unlimited', true));
+btnTargetEnableAll?.addEventListener('click', () => setAllVisibleTargets('enabled', true));
 
 async function selectMonsterArea(areaKey, force = false) {
   const area = monsterCatalog.find(candidate => candidate.key === areaKey);
@@ -3818,6 +3982,8 @@ function renderLootArea(area, discovered = [], sourceAvailable = true, message =
     const stored = savedLoot[monster.key] || {};
     const row = document.createElement('div');
     row.className = 'loot-config-row';
+    row.dataset.monsterKey = monster.key;
+    row.dataset.monsterName = monster.name;
     const name = document.createElement('div');
     name.className = 'monster-config-name';
     name.textContent = monster.name;
@@ -3906,6 +4072,28 @@ function renderLootArea(area, discovered = [], sourceAvailable = true, message =
   lootAreaContent.replaceChildren(table);
   refreshLucideIcons(lootAreaContent);
 }
+
+async function setAllVisibleLoot(field, value) {
+  const areaKey = activeLootAreaKey;
+  if (!areaKey) return;
+  const patch = {};
+  for (const row of lootAreaContent?.querySelectorAll('.loot-config-row[data-monster-key]') || []) {
+    patch[row.dataset.monsterKey] = { name: row.dataset.monsterName || row.dataset.monsterKey, [field]: value };
+    const checkbox = row.querySelector(field === 'unlimited' ? '.loot-unlimited' : '.loot-enabled');
+    if (checkbox) checkbox.checked = value;
+  }
+  if (Object.keys(patch).length === 0) return;
+  const result = await updateCanonicalConfig({ looting: { maps: { [areaKey]: patch } } });
+  if (!result?.success) {
+    appendLog('ERROR', result?.error || 'Could not update visible loot settings');
+    return;
+  }
+  lootingConfig = result.config?.looting || lootingConfig;
+  await selectLootArea(areaKey, true);
+}
+
+btnLootUnlimitedAll?.addEventListener('click', () => setAllVisibleLoot('unlimited', true));
+btnLootEnableAll?.addEventListener('click', () => setAllVisibleLoot('enabled', true));
 
 async function selectLootArea(areaKey, force = false) {
   const area = monsterCatalog.find(candidate => candidate.key === areaKey);
@@ -4221,9 +4409,13 @@ async function refreshBattlePass() {
     if (!result?.success) throw new Error(result?.error || 'Battle Pass could not be read');
     latestBattlePassState = result.state;
     renderBattlePassCounters(result.state);
-    setWorkspaceStatus(battlePassStatus, result.state?.page?.active
-      ? 'Daily objectives refreshed.'
-      : 'No active Battle Pass was recognized.', result.state?.page?.active ? 'success' : '');
+    const page = result.state?.page || {};
+    const levelText = Number.isFinite(Number(page.level)) ? ` · level ${Number(page.level).toLocaleString()}` : '';
+    setWorkspaceStatus(battlePassStatus, page.completed === true
+      ? `Battle Pass complete${levelText}. Automation will not run it.`
+      : page.active
+        ? `Daily objectives refreshed${levelText}.`
+        : 'No active Battle Pass was recognized.', page.active || page.completed ? 'success' : '');
   } catch (error) {
     setWorkspaceStatus(battlePassStatus, error.message, 'error');
   } finally {
@@ -4236,8 +4428,7 @@ async function loadBattlePassPolicy() {
   if (chkBattlePassEnabled) chkBattlePassEnabled.checked = battlePassConfig.enabled === true;
   if (chkBattlePassLootIfAchievable) chkBattlePassLootIfAchievable.checked = battlePassConfig.lootIfAchievable === true;
   if (chkBattlePassSafeCheck) chkBattlePassSafeCheck.checked = battlePassConfig.safeCheck === true;
-  const battlePassAreas = GATE_MAPS.filter(([key]) => ['grakthar_2', 'grakthar_3'].includes(key));
-  replaceObjectiveOptions(selectBattlePassArea, battlePassAreas, battlePassConfig.areaKey || 'grakthar_3');
+  replaceObjectiveOptions(selectBattlePassArea, GATE_MAPS, battlePassConfig.areaKey || 'grakthar_3');
   await renderBattlePassTargets(selectBattlePassArea?.value);
 }
 
@@ -4368,13 +4559,7 @@ function adventureQuestPolicyFor(quest = {}) {
   const directId = Number(quest.policyId || quest.id);
   const direct = directId > 0 ? adventureQuestConfig.quests?.[String(directId)] : null;
   if (direct) return { policy: direct, draftKey: null, policyId: String(directId) };
-  const title = normalizedQuestText(quest.title);
-  const remembered = Object.entries(adventureQuestConfig.quests || {})
-    .find(([, candidate]) => normalizedQuestText(candidate?.matchTitle) === title);
-  if (remembered) return { policy: remembered[1], draftKey: null, policyId: remembered[0] };
-  const draft = Object.entries(adventureQuestConfig.drafts || {})
-    .find(([, candidate]) => normalizedQuestText(candidate?.matchTitle) === title);
-  return draft ? { policy: draft[1], draftKey: draft[0], policyId: null } : { policy: {}, draftKey: null, policyId: null };
+  return { policy: {}, draftKey: null, policyId: null };
 }
 
 async function populateQuestRequirement(type, areaKey, monsterKey, select, policy = {}) {
@@ -4471,38 +4656,10 @@ function getMonsterAreaFromCatalog(areaKey) {
 function renderAdventureQuests(state) {
   if (!adventureQuestList) return;
   const serverQuests = (state?.page?.quests || []).map(quest => ({ ...quest }));
-  const configuredIds = Object.keys(adventureQuestConfig.quests || {}).sort((left, right) => Number(left) - Number(right));
-  const representedIds = new Set(serverQuests.filter(quest => Number(quest.id) > 0).map(quest => String(quest.id)));
-  const unmatchedIds = configuredIds.filter(id => !representedIds.has(id));
-  for (const quest of serverQuests.filter(candidate => !(Number(candidate.id) > 0))) {
-    const title = normalizedQuestText(quest.title);
-    const rememberedId = unmatchedIds.find(id => normalizedQuestText(adventureQuestConfig.quests?.[id]?.matchTitle) === title);
-    if (!rememberedId) continue;
-    quest.policyId = Number(rememberedId);
-    representedIds.add(rememberedId);
-    unmatchedIds.splice(unmatchedIds.indexOf(rememberedId), 1);
-  }
-  const unresolvedServer = serverQuests.filter(quest => !(Number(quest.id) > 0) && !(Number(quest.policyId) > 0));
-  if (unresolvedServer.length > 0 && unresolvedServer.length === unmatchedIds.length) {
-    unresolvedServer.forEach((quest, index) => {
-      quest.policyId = Number(unmatchedIds[index]);
-      representedIds.add(unmatchedIds[index]);
-    });
-    unmatchedIds.length = 0;
-  }
-  const rows = [...serverQuests];
-  for (const id of configuredIds) {
-    if (!representedIds.has(id)) rows.push({ id: Number(id), title: `Saved Quest ${id}`, objective: '', status: 'saved' });
-  }
-  const representedDrafts = new Set();
-  for (const quest of rows) {
-    const matched = adventureQuestPolicyFor(quest);
-    if (matched.draftKey) representedDrafts.add(matched.draftKey);
-  }
-  for (const [draftKey, policy] of Object.entries(adventureQuestConfig.drafts || {})) {
-    if (representedDrafts.has(draftKey)) continue;
-    rows.push({ id: null, title: policy.matchTitle || 'Saved quest', objective: policy.matchObjective || '', status: 'saved', savedDraftKey: draftKey });
-  }
+  // The authenticated board is authoritative. Imported configuration may
+  // contain policies for another account's board; never synthesize those stale
+  // quests into this account's list.
+  const rows = serverQuests;
   if (rows.length === 0) {
     adventureQuestList.innerHTML = '<div class="empty-state">No quest cards were exposed by the current page.</div>';
     return;
@@ -4627,6 +4784,201 @@ async function saveAdventureQuestSettings() {
 }
 
 setInterval(() => updateObjectiveCooldowns(), 30000);
+function bossHuntStoredPolicy(boss) {
+  return bossHuntConfig.targets?.[boss.areaKey]?.[boss.targetKey] || {};
+}
+
+async function saveBossHuntRow(boss, controls) {
+  const entry = {
+    name: boss.name,
+    monsterKey: boss.monsterKey,
+    phase: Number(boss.phase) || null,
+    targetDamage: Math.max(0, Math.trunc(Number(controls.targetDamage.value) || 0)),
+    killCount: Math.max(0, Math.trunc(Number(controls.killCount.value) || 0)),
+    unlimited: controls.unlimited.checked,
+    priority: Math.max(0, Math.trunc(Number(controls.priority.value) || 0)),
+    minimumHp: Math.max(0, Math.trunc(Number(controls.minimumHp.value) || 0)),
+    gearSet: controls.gearSet.value,
+    petSet: controls.petSet.value,
+    staminaPotion: controls.staminaPotion.value,
+    allowAbilities: controls.allowAbilities.checked,
+    enabled: controls.enabled.checked,
+  };
+  const result = await updateCanonicalConfig({
+    bossHunt: { targets: { [boss.areaKey]: { [boss.targetKey]: entry } } },
+  });
+  if (result?.success) bossHuntConfig = result.config?.bossHunt || bossHuntConfig;
+  else appendLog('ERROR', result?.error || `Could not save Boss Hunt settings for ${boss.name}`);
+}
+
+function renderBossHunt(bosses = []) {
+  if (!bossHuntContent) return;
+  if (bosses.length === 0) {
+    bossHuntContent.replaceChildren(Object.assign(document.createElement('div'), {
+      className: 'empty-state',
+      textContent: 'No verified Gate or Event bosses are known for this account. Use Refresh after the account can access its Gates.',
+    }));
+    setWorkspaceStatus(bossHuntStatus, '0 known bosses');
+    return;
+  }
+  const table = document.createElement('div');
+  table.className = 'monster-config-table boss-hunt-table';
+  const header = document.createElement('div');
+  header.className = 'monster-config-row monster-config-header';
+  for (const [label, title] of [
+    ['Boss', 'Boss or phase name and source area'], ['Active', 'Currently alive / observed total'], ['Stats', 'Monster stats and rewards'],
+    ['Damage', 'Target damage'], ['Count', 'Completed boss instances required'], ['∞', 'Unlimited instances'],
+    ['Pri', 'Priority — lower numbers run first'], ['Min HP', 'Minimum current HP'], ['Done', 'Completed Boss Hunt targets'],
+    ['Gear', 'Gear set'], ['Pet', 'Pet set'], ['Potions', 'Stamina potion policy'], ['Skills', 'Allow configured abilities'], ['Target', 'Enable Boss Hunt target'],
+  ]) {
+    const cell = document.createElement('span');
+    cell.textContent = label;
+    cell.title = title;
+    header.append(cell);
+  }
+  table.append(header);
+
+  for (const boss of bosses) {
+    const stored = bossHuntStoredPolicy(boss);
+    const row = document.createElement('div');
+    row.className = 'monster-config-row boss-hunt-row';
+    const name = document.createElement('div');
+    name.className = 'monster-config-name';
+    const nameText = document.createElement('span');
+    nameText.className = 'monster-config-name-text';
+    nameText.textContent = boss.name;
+    const area = document.createElement('small');
+    area.className = 'boss-hunt-area';
+    area.textContent = `${boss.areaType === 'event' ? 'Event' : 'Gate'} · ${boss.areaName}`;
+    name.append(nameText);
+    if (Number(boss.phase) > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'monster-phase-badge';
+      badge.textContent = `Phase ${boss.phase}`;
+      name.append(badge);
+    } else {
+      const badge = document.createElement('span');
+      badge.className = 'monster-boss-badge';
+      badge.textContent = 'Boss';
+      name.append(badge);
+    }
+    name.append(area);
+
+    const availability = document.createElement('span');
+    const alive = Math.max(0, Number(boss.aliveCount) || 0);
+    const total = Math.max(alive, Number(boss.totalCount) || Number(boss.activeInstances) || 0);
+    availability.className = `monster-availability-count${alive > 0 ? ' is-active' : ''}`;
+    availability.textContent = `${alive}/${total}`;
+    availability.title = alive > 0 ? 'A matching boss is active' : 'No matching boss is currently observed';
+
+    const statsButton = document.createElement('button');
+    statsButton.type = 'button';
+    statsButton.className = `monster-stats-help${boss.statsAvailable ? ' has-stats' : ''}`;
+    statsButton.append(createLucideIcon('circle-help'));
+    statsButton.title = `View verified stats and rewards for ${boss.name}`;
+    statsButton.addEventListener('click', () => monsterStatsView?.open(boss.areaKey, boss.monsterKey, boss.name));
+
+    const targetDamage = document.createElement('input');
+    targetDamage.type = 'number'; targetDamage.min = '0'; targetDamage.step = '1';
+    targetDamage.className = 'monster-number-input'; targetDamage.value = stored.targetDamage ?? 0;
+    targetDamage.setAttribute('aria-label', `${boss.name} target damage`);
+    const killCount = document.createElement('input');
+    killCount.type = 'number'; killCount.min = '0'; killCount.step = '1';
+    killCount.className = 'monster-number-input'; killCount.value = stored.killCount ?? 0;
+    killCount.setAttribute('aria-label', `${boss.name} target count`);
+    const unlimited = document.createElement('input');
+    unlimited.type = 'checkbox'; unlimited.className = 'tree-checkbox'; unlimited.checked = stored.unlimited === true;
+    unlimited.title = 'Keep targeting new instances without a count limit.';
+    const updateLimit = () => {
+      killCount.disabled = unlimited.checked;
+      killCount.classList.toggle('module-setting-disabled', unlimited.checked);
+    };
+    updateLimit();
+    const priority = document.createElement('input');
+    priority.type = 'number'; priority.min = '0'; priority.step = '1';
+    priority.className = 'monster-number-input'; priority.value = stored.priority ?? 0;
+    priority.title = 'Lower priorities run first; equal priorities rotate.';
+    const minimumHp = document.createElement('input');
+    minimumHp.type = 'number'; minimumHp.min = '0'; minimumHp.step = '1';
+    minimumHp.className = 'monster-number-input'; minimumHp.value = stored.minimumHp ?? 0;
+    minimumHp.title = 'Ignore active instances below this HP.';
+
+    const progress = document.createElement('div');
+    progress.className = 'monster-progress';
+    const progressText = document.createElement('span');
+    progressText.textContent = `${stored.completedCount || 0}/${stored.unlimited === true ? '∞' : (stored.killCount || 0)}`;
+    const reset = document.createElement('button');
+    reset.type = 'button'; reset.className = 'monster-progress-reset'; reset.append(createLucideIcon('rotate-ccw'));
+    reset.title = `Reset Boss Hunt progress for ${boss.name}`;
+    reset.addEventListener('click', async () => {
+      const result = await updateCanonicalConfig({ bossHunt: { targets: { [boss.areaKey]: { [boss.targetKey]: {
+        completedCount: 0, completedInstanceIds: [],
+      } } } } });
+      if (result?.success) {
+        bossHuntConfig = result.config?.bossHunt || bossHuntConfig;
+        progressText.textContent = `0/${unlimited.checked ? '∞' : (killCount.value || 0)}`;
+      } else appendLog('ERROR', result?.error || `Could not reset ${boss.name}`);
+    });
+    progress.append(progressText, reset);
+
+    const gearSet = createMonsterSetSelect(stored.gearSet, `${boss.name} Gear set`);
+    const petSet = createMonsterSetSelect(stored.petSet, `${boss.name} Pet set`);
+    const staminaPotion = createStaminaPotionSelect(stored.staminaPotion, `${boss.name} stamina potion`);
+    const allowAbilities = document.createElement('input');
+    allowAbilities.type = 'checkbox'; allowAbilities.className = 'tree-checkbox';
+    allowAbilities.checked = stored.allowAbilities === true;
+    allowAbilities.title = 'Allow globally enabled Combat abilities against this boss.';
+    const enabled = document.createElement('input');
+    enabled.type = 'checkbox'; enabled.className = 'tree-checkbox'; enabled.checked = stored.enabled === true;
+    enabled.title = 'Include this boss in Boss Hunt.';
+
+    const controls = { targetDamage, killCount, unlimited, priority, minimumHp, gearSet, petSet, staminaPotion, allowAbilities, enabled };
+    for (const control of Object.values(controls)) control.addEventListener('change', () => saveBossHuntRow(boss, controls));
+    killCount.addEventListener('change', () => {
+      progressText.textContent = `${stored.completedCount || 0}/${unlimited.checked ? '∞' : (killCount.value || 0)}`;
+    });
+    unlimited.addEventListener('change', () => {
+      updateLimit();
+      progressText.textContent = `${stored.completedCount || 0}/${unlimited.checked ? '∞' : (killCount.value || 0)}`;
+    });
+    row.append(name, availability, statsButton, targetDamage, killCount, unlimited, priority, minimumHp,
+      progress, gearSet, petSet, staminaPotion, allowAbilities, enabled);
+    enhanceNumberInputs(row);
+    table.append(row);
+  }
+  bossHuntContent.replaceChildren(table);
+  setWorkspaceStatus(bossHuntStatus, `${bosses.length} known boss target${bosses.length === 1 ? '' : 's'}`);
+  refreshLucideIcons(bossHuntContent);
+}
+
+async function refreshBossHunt(force = false) {
+  if (!bossHuntContent || !activeAccount) return;
+  const token = accountRequestToken();
+  bossHuntContent.replaceChildren(Object.assign(document.createElement('div'), {
+    className: 'empty-state', textContent: force ? 'Refreshing accessible Gates and Events…' : 'Loading Boss Hunt…',
+  }));
+  if (btnRefreshBossHunt) btnRefreshBossHunt.disabled = true;
+  try {
+    const [result, config] = await Promise.all([
+      window.botAPI.listBossHuntTargets(force === true),
+      window.botAPI.getConfig(),
+    ]);
+    if (!isCurrentAccountRequest(token)) return;
+    if (!result?.success) throw new Error(result?.error || 'Boss Hunt is unavailable');
+    bossHuntConfig = config?.bossHunt || { targets: {} };
+    renderBossHunt(result.bosses || []);
+  } catch (error) {
+    if (!isCurrentAccountRequest(token)) return;
+    bossHuntContent.replaceChildren(Object.assign(document.createElement('div'), {
+      className: 'empty-state', textContent: error.message,
+    }));
+    setWorkspaceStatus(bossHuntStatus, 'Boss discovery failed');
+  } finally {
+    if (isCurrentAccountRequest(token) && btnRefreshBossHunt) btnRefreshBossHunt.disabled = false;
+  }
+}
+
+btnRefreshBossHunt?.addEventListener('click', () => refreshBossHunt(true));
 // Tab Switching
 window.switchTab = function (tab) {
   if (tab === 'autoFarm' && !autoFarmEligibility.eligible) {
@@ -4647,6 +4999,7 @@ window.switchTab = function (tab) {
   tabStatisticsBtn?.classList.toggle('active', tab === 'statistics');
   tabBattlePassBtn?.classList.toggle('active', tab === 'battlePass');
   tabAdventureQuestsBtn?.classList.toggle('active', tab === 'adventureQuests');
+  tabBossHuntBtn?.classList.toggle('active', tab === 'bossHunt');
   if (tabConsoleBtn) tabConsoleBtn.classList.toggle('active', tab === 'console');
 
   const homeShellVisible = tab === 'home' || tab === 'botSetup' || tab === 'combat';
@@ -4658,6 +5011,7 @@ window.switchTab = function (tab) {
   if (viewStatistics) viewStatistics.style.display = tab === 'statistics' ? 'flex' : 'none';
   if (viewBattlePass) viewBattlePass.style.display = tab === 'battlePass' ? 'flex' : 'none';
   if (viewAdventureQuests) viewAdventureQuests.style.display = tab === 'adventureQuests' ? 'flex' : 'none';
+  if (viewBossHunt) viewBossHunt.style.display = tab === 'bossHunt' ? 'flex' : 'none';
   if (viewConsole) viewConsole.style.display = tab === 'console' ? 'flex' : 'none';
 
   if (tab === 'console') {
@@ -4673,6 +5027,7 @@ window.switchTab = function (tab) {
   if (tab === 'statistics') refreshStatistics();
   if (tab === 'battlePass') refreshBattlePass();
   if (tab === 'adventureQuests') refreshAdventureQuests();
+  if (tab === 'bossHunt') refreshBossHunt(false);
   if (homeStatsBar) homeStatsBar.style.display = tab === 'home' ? 'flex' : 'none';
   if (homeRuntimeStatus) homeRuntimeStatus.style.display = tab === 'home' ? 'flex' : 'none';
   if (overviewCurrentPanel) overviewCurrentPanel.style.display = tab === 'home' ? 'flex' : 'none';
@@ -4687,6 +5042,7 @@ window.switchTab = function (tab) {
       if (view) view.style.display = 'none';
     }
   }
+  showTabGuideOnce(tab, activeAccount);
 };
 
 document.querySelectorAll('[data-tab]').forEach(button => {
@@ -5393,10 +5749,16 @@ window.botAPI.onLootDiscovery?.(snapshot => {
 
 function renderOverviewTelemetry(telemetry) {
   if (!telemetry) return;
+  const runtime = telemetry.runtimeStatus || {};
   if (botActionText) botActionText.textContent = telemetry.currentAction || '-';
   if (botTargetText) botTargetText.textContent = telemetry.target?.name || '-';
-  if (overviewTargetName) overviewTargetName.textContent = telemetry.target?.name || 'Nothing running';
-  if (overviewActionReason) overviewActionReason.textContent = telemetry.currentReason || 'Waiting for the next decision.';
+  if (overviewTargetName) overviewTargetName.textContent = telemetry.target?.name || runtime.title || 'Nothing running';
+  if (overviewActionReason) overviewActionReason.textContent = runtime.detail || telemetry.currentReason || 'Waiting for the next decision.';
+  if (overviewRuntimeBadge) {
+    const kind = String(runtime.kind || 'active').toLowerCase();
+    overviewRuntimeBadge.textContent = runtime.title || telemetry.state || 'Working';
+    overviewRuntimeBadge.className = `runtime-status-badge is-${kind}`;
+  }
   const currentDamage = Number(telemetry.target?.userDmg || 0);
   const targetDamage = Number(telemetry.target?.targetDamage || 0);
   const progressPercent = targetDamage > 0 ? Math.min(100, Math.max(0, (currentDamage / targetDamage) * 100)) : 0;
@@ -5439,10 +5801,30 @@ function renderOverviewTelemetry(telemetry) {
   if (overviewSessionHealthPots) overviewSessionHealthPots.textContent = (Number(runStats.healthPotionsUsed) || 0).toLocaleString();
   if (overviewSessionErrors) overviewSessionErrors.textContent = (Number(runStats.errors) || 0).toLocaleString();
   renderOverviewPotionCounters(telemetry.potions);
+  renderBotSetupResourceCounters(telemetry);
   renderMonsterPhasePvpTelemetry(telemetry.monsterPhasePvp);
   renderProgressionStaminaPotionCounters(telemetry);
   runtimeDryRun = telemetry.dryRun !== false;
   renderBotModeState();
+}
+
+function renderBotSetupResourceCounters(telemetry = {}) {
+  const runStats = telemetry.stats || {};
+  const available = { health: 0, smallMana: 0, largeMana: 0 };
+  for (const item of telemetry.potions?.items || []) {
+    const quantity = Math.max(0, Number(item?.quantity) || 0);
+    if (item?.category === 'health') available.health += quantity;
+    if (item?.category === 'mana' && item?.type === 'small') available.smallMana += quantity;
+    if (item?.category === 'mana' && item?.type === 'large') available.largeMana += quantity;
+  }
+  const recognized = telemetry.potions?.recognized === true;
+  if (healthDeathsUsed) healthDeathsUsed.textContent = `${Math.max(0, Number(runStats.deaths) || 0).toLocaleString()} deaths`;
+  if (healthPotsUsed) healthPotsUsed.textContent = `${Math.max(0, Number(runStats.healthPotionsUsed) || 0).toLocaleString()} used`;
+  if (healthPotsAvailable) healthPotsAvailable.textContent = recognized ? `${available.health.toLocaleString()} left` : '— left';
+  if (smallManaPotsUsed) smallManaPotsUsed.textContent = `${Math.max(0, Number(runStats.manaPotionsUsed?.small) || 0).toLocaleString()} used`;
+  if (smallManaPotsAvailable) smallManaPotsAvailable.textContent = recognized ? `${available.smallMana.toLocaleString()} left` : '— left';
+  if (largeManaPotsUsed) largeManaPotsUsed.textContent = `${Math.max(0, Number(runStats.manaPotionsUsed?.large) || 0).toLocaleString()} used`;
+  if (largeManaPotsAvailable) largeManaPotsAvailable.textContent = recognized ? `${available.largeMana.toLocaleString()} left` : '— left';
 }
 
 function renderMonsterPhasePvpTelemetry(phase) {
@@ -5829,7 +6211,8 @@ if (window.botAPI.onEnergyProgress) {
     if (progress.type === 'start') {
       appendFarmTerminal('info', `[${progress.current}/${progress.total}] Farming chapter ${progress.chapter}...`);
     } else if (progress.type === 'success') {
-      appendFarmTerminal('success', `[${progress.current}/${progress.total}] Chapter ${progress.chapter} updated.`);
+      const reward = Number(progress.staminaGained) > 0 ? ` · +${progress.staminaGained} ST` : ' · no new Stamina';
+      appendFarmTerminal('success', `[${progress.current}/${progress.total}] Chapter ${progress.chapter}: ${progress.message || 'accepted'}${reward}`);
     } else if (progress.type === 'error') {
       appendFarmTerminal('error', `[${progress.current}/${progress.total}] Chapter ${progress.chapter}: ${progress.message || 'failed'}`);
     }
@@ -5840,6 +6223,7 @@ if (window.botAPI.onEnergyProgress) {
 function shouldStopFarming() {
   const currentStamina = (latestStats && latestStats.stamina && latestStats.stamina.current) !== undefined ? latestStats.stamina.current : 0;
   const maxStamina = (latestStats && latestStats.stamina && latestStats.stamina.max) || (latestStats && latestStats.totalStamina) || 0;
+  const farmedEnergy = Math.max(0, Number(latestStats?.farmedEnergy) || 0);
 
   // 1. Safety: Stop if Max Stamina reached
   if (chkStopMaxStamina?.checked && maxStamina > 0 && currentStamina >= maxStamina) {
@@ -5848,8 +6232,8 @@ function shouldStopFarming() {
 
   // 2. Safety: Max Stamina Farm target threshold
   const maxFarmTarget = parseInt(inputMaxStaminaFarm?.value, 10);
-  if (!isNaN(maxFarmTarget) && maxFarmTarget > 0 && currentStamina >= maxFarmTarget) {
-    return { stop: true, reason: `Current stamina (${currentStamina}) reached the Max Stamina Farm threshold (${maxFarmTarget}).` };
+  if (!isNaN(maxFarmTarget) && maxFarmTarget > 0 && farmedEnergy >= maxFarmTarget) {
+    return { stop: true, reason: `Chapter reward progress (${farmedEnergy}) reached the farming threshold (${maxFarmTarget}).` };
   }
 
   // 3. Safety: Stop when hourly stamina is in [X] min

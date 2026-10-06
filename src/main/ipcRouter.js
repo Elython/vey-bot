@@ -9,14 +9,15 @@ const path = require('path');
 const { isDeepStrictEqual } = require('util');
 const { ipcMain, app, dialog } = require('electron');
 const { Logger } = require('./logger');
+const { getDataPath } = require('../dataDirectory');
 const { mangaManager } = require('./mangaManager');
-const { getDataDir } = require('./dataPaths');
 const { getMonsterArea, listMonsterAreas, monsterTypeKey } = require('../engine/monsterCatalog');
 const { stateStore } = require('../engine/stateStore');
 const { estimateRewardXp } = require('../engine/lootRewardLedger');
 const { resolveLootXpBoost } = require('../engine/progressionEngine');
 const { ReadPriority } = require('../engine/worldState');
 const { projectLootableArea } = require('../engine/lootDiscoveryService');
+const { nextUnfarmedChapter } = require('../engine/chapterCatalog');
 
 /**
  * Register all IPC handlers
@@ -352,9 +353,9 @@ function registerIpcHandlers(deps) {
         stoppedForApply = true;
         await getCubePvpService?.()?.stop();
       }
-      engine.replaceConfig(config);
+      engine.replaceConfig(config, { preserveProgressionSnapshot: true });
       const loadouts = await engine.applyConfiguredPveLoadouts();
-      if (wasRunning && !wasPaused && !engine.start()) {
+      if (wasRunning && !wasPaused && !engine.start({ preserveProgressionSnapshot: true })) {
         throw new Error('The bot could not restart after applying its configuration');
       }
       if (wasRunning && !wasPaused) await getCubePvpService?.()?.start(config);
@@ -590,7 +591,7 @@ function registerIpcHandlers(deps) {
       if (confirmation.response !== 1) return { success: false, canceled: true };
       await getBotEngine()?.stopAndWait?.();
       await getCubePvpService?.()?.stop?.();
-      const backupDirectory = path.join(getDataDir(), 'backups');
+      const backupDirectory = getDataPath('backups');
       fs.mkdirSync(backupDirectory, { recursive: true, mode: 0o700 });
       const snapshotPath = path.join(backupDirectory, `pre-restore-${Date.now()}.json`);
       atomicJsonWrite(snapshotPath, buildAccountBackup(account, ownerHash));
@@ -898,6 +899,54 @@ function registerIpcHandlers(deps) {
     }
   });
 
+  ipcMain.handle('boss-hunt:list-targets', async (event, force = false) => {
+    const catalogService = getMonsterCatalogService?.();
+    const targetService = getTargetDiscoveryService?.();
+    if (!catalogService || !targetService) return { success: false, error: 'Game session not active' };
+    try {
+      if (force === true) {
+        const areas = listMonsterAreas().filter(area => ['gate', 'event'].includes(area.type));
+        for (const area of areas) {
+          try {
+            await targetService.listArea(area.key, { force: true });
+          } catch (error) {
+            Logger.logClient(getActiveAccount(), `Boss Hunt skipped ${area.label}: ${error.message}`);
+          }
+        }
+      }
+      const bosses = catalogService.listKnownBosses();
+      const saved = getConfigManager().getConfig().bossHunt?.targets || {};
+      const merged = new Map(bosses.map(boss => [`${boss.areaKey}:${boss.targetKey}`, boss]));
+      for (const [areaKey, entries] of Object.entries(saved)) {
+        const area = getMonsterArea(areaKey);
+        if (!area || !['gate', 'event'].includes(area.type)) continue;
+        for (const [targetKey, entry] of Object.entries(entries || {})) {
+          const identity = `${areaKey}:${targetKey}`;
+          if (merged.has(identity)) continue;
+          merged.set(identity, {
+            targetKey,
+            areaKey,
+            areaName: area.label,
+            areaType: area.type,
+            monsterKey: entry.monsterKey || monsterTypeKey(entry.name),
+            name: entry.name,
+            phase: Number(entry.phase) || null,
+            boss: !Number(entry.phase),
+            aliveCount: 0,
+            activeInstances: 0,
+            totalCount: 0,
+            statsAvailable: false,
+            remembered: true,
+          });
+        }
+      }
+      return { success: true, bosses: [...merged.values()] };
+    } catch (error) {
+      Logger.logClient(getActiveAccount(), `Boss Hunt list failed: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  });
+
   // ─── Active Gear / Pet Loadout ────────────────────────────────────
 
   ipcMain.handle('loadouts:get-active', async (event, options = {}) => {
@@ -1144,20 +1193,57 @@ function registerIpcHandlers(deps) {
     }
     const manga = mangaManager.getAccountMangaList(account).find(item => item.slug === targetManga);
     if (!manga) return { success: false, message: 'Manga target is not configured for this account' };
-    const firstChapter = (manga.farmedCount || 0) + 1;
-    if (manga.chapters && firstChapter > manga.chapters) {
+    const completedChapters = new Set((manga.farmedChapterNumbers || []).map(Number));
+    const entries = Array.isArray(manga.chapterEntries) && manga.chapterEntries.length > 0
+      ? manga.chapterEntries
+      : Array.from({ length: Math.max(0, Number(manga.chapters) || 0) }, (_, index) => ({ number: index + 1, url: null }));
+    const availableChapters = entries
+      .filter(entry => Number.isFinite(Number(entry.number)) && Number(entry.number) > 0 && !completedChapters.has(Number(entry.number)))
+      .sort((left, right) => Number(left.number) - Number(right.number));
+    const first = nextUnfarmedChapter(manga);
+    if (!first || availableChapters.length === 0) {
       return { success: false, message: 'All known chapters for this manga were already farmed' };
     }
     const reaction = getConfigManager().getConfig().energyFarming.reactionType;
-    const available = manga.chapters ? Math.max(0, manga.chapters - firstChapter + 1) : requestedCount;
-    const count = Math.min(requestedCount, available);
+    const farmSettings = mangaManager.getAccountFarmSettings(account);
+    const independentDelay = farmSettings.configMode === 'independent'
+      ? Math.max(0, Number.parseFloat(String(farmSettings.delay || '1')) * 1000)
+      : null;
+    const count = Math.min(requestedCount, availableChapters.length);
     const results = [];
     for (let offset = 0; offset < count; offset++) {
-      const chapter = firstChapter + offset;
+      const live = stateStore.getState();
+      const stamina = Math.max(0, Number(live.stamina?.current) || 0);
+      const maxStamina = Math.max(0, Number(live.stamina?.max) || 0);
+      const farmedEnergy = Math.max(0, Number(live.farmedEnergy) || 0);
+      const configuredMaximum = Math.max(0, Number(farmSettings.maxStaminaFarm) || 0);
+      const serverNow = new Date(Date.now() + ((Number(live.serverTzOff) || 19800) * 1000));
+      const minutesToHourlyRefill = 59 - serverNow.getUTCMinutes();
+      const stopHourly = Math.max(0, Number(farmSettings.stopHourlyMin) || 0);
+      const stopReason = farmSettings.stopMaxStamina !== false && maxStamina > 0 && stamina >= maxStamina
+        ? `Max Stamina reached (${stamina}/${maxStamina}).`
+        : configuredMaximum > 0 && farmedEnergy >= configuredMaximum
+          ? `Chapter reward progress (${farmedEnergy}) reached the farming limit (${configuredMaximum}).`
+          : stopHourly > 0 && minutesToHourlyRefill < stopHourly
+            ? `Hourly Stamina refill is in ${minutesToHourlyRefill} minute(s).`
+            : null;
+      if (stopReason) {
+        results.push({ success: false, skipped: true, message: stopReason });
+        break;
+      }
+      const chapterEntry = availableChapters[offset];
+      const chapter = Number(chapterEntry.number);
       windowManager.sendToMain('energy:progress', {
         type: 'start', targetManga, chapter, current: offset + 1, total: count,
       });
-      const result = await energyFarmEngine.farmChapter(account, targetManga, chapter, reaction);
+      const result = await energyFarmEngine.farmChapter(
+        account,
+        targetManga,
+        chapter,
+        reaction,
+        chapterEntry.url || null,
+        { delayMs: independentDelay },
+      );
       results.push({ chapter, ...result });
       windowManager.sendToMain('energy:progress', {
         type: result?.success ? 'success' : 'error',
@@ -1166,13 +1252,22 @@ function registerIpcHandlers(deps) {
         current: offset + 1,
         total: count,
         message: result?.message || '',
+        staminaGained: Math.max(0, Number(result?.energy) || 0),
       });
       if (!result?.success) break;
-      mangaManager.incrementFarmedCount(account, targetManga);
+      const staminaGained = Math.max(0, Number(result.energy) || 0);
+      stateStore.update({
+        stamina: {
+          current: maxStamina > 0 ? Math.min(maxStamina, stamina + staminaGained) : stamina + staminaGained,
+          max: maxStamina,
+        },
+        farmedEnergy: Math.min(1000, farmedEnergy + staminaGained),
+      });
+      mangaManager.incrementFarmedCount(account, targetManga, chapter);
       getActivityHistoryStore?.()?.recordEvent?.(account, 'chapter_farm', {
         manga: targetManga,
         chapter,
-        staminaGained: Number(result.energy) || 2,
+        staminaGained,
         reaction: result.reactionCode,
       });
     }
@@ -1189,9 +1284,10 @@ function registerIpcHandlers(deps) {
         : (last?.message || 'Farming stopped before all requested chapters completed.'),
     };
     if (completed > 0) {
-      const lastChapter = firstChapter + completed - 1;
+      const lastEntry = availableChapters[completed - 1];
+      const lastChapter = Number(lastEntry.number);
       const engine = getBotEngine();
-      const energy = await engine?.gameReader?.fetchFarmedEnergy(targetManga, lastChapter);
+      const energy = await engine?.gameReader?.fetchFarmedEnergy(targetManga, lastChapter, lastEntry.url || null);
       if (energy !== null && energy !== undefined) response.energy = energy;
     }
     return response;
@@ -1205,17 +1301,18 @@ function registerIpcHandlers(deps) {
     if (getConfigManager().getConfig().safety.dryRun) {
       return { success: false, dryRun: true, message: 'Dry run is enabled. Chapter reaction was blocked.' };
     }
-    if (typeof slug !== 'string' || !/^[A-Za-z0-9_-]+$/.test(slug) || !Number.isInteger(Number(chapterNum))) {
+    if (typeof slug !== 'string' || !/^[A-Za-z0-9_-]+$/.test(slug) || !/^\d+(?:\.\d+)?$/.test(String(chapterNum)) || !Number.isFinite(Number(chapterNum)) || Number(chapterNum) <= 0) {
       return { success: false, message: 'Invalid chapter request' };
     }
     const account = getActiveAccount();
     Logger.logUser(account, `Triggered reaction farm for ${slug} Ch.${chapterNum}`);
     const result = await chapterFarmer.farmSingleChapter(account, slug, chapterNum, reactionType);
     if (result.success) {
+      mangaManager.incrementFarmedCount(account, slug, Number(chapterNum));
       getActivityHistoryStore?.()?.recordEvent?.(account, 'chapter_farm', {
         manga: slug,
         chapter: Number(chapterNum),
-        staminaGained: 2,
+        staminaGained: Math.max(0, Number(result.energy) || 0),
         reaction: result.reactionCode,
       });
     }

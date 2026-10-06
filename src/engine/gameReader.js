@@ -48,7 +48,7 @@ class GameReader {
         : null;
       return route
         ? this.gameAPI.fetchPlayerResources(route.gateId, route.wave)
-        : (this.gameAPI?.fetchPlayerResources ? this.gameAPI.fetchPlayerResources() : {});
+        : {};
     })();
     const [statsResult, dashboardResult, resourcesResult] = await Promise.allSettled([
       this.gameAPI.fetchStats(),
@@ -138,9 +138,9 @@ class GameReader {
     }
   }
 
-  async fetchFarmedEnergy(slug = 'The-Investor-Who-Sees-The-Future', chapterNum = 1) {
+  async fetchFarmedEnergy(slug = 'The-Investor-Who-Sees-The-Future', chapterNum = 1, chapterUrl = null) {
     if (this.farmedEnergyPromise) return this.farmedEnergyPromise;
-    const refresh = this._fetchFarmedEnergy(slug, chapterNum);
+    const refresh = this._fetchFarmedEnergy(slug, chapterNum, chapterUrl);
     this.farmedEnergyPromise = refresh;
     try {
       return await refresh;
@@ -149,17 +149,26 @@ class GameReader {
     }
   }
 
-  async _fetchFarmedEnergy(slug, chapterNum) {
+  async _fetchFarmedEnergy(slug, chapterNum, chapterUrl = null) {
     if (!this.http) throw new Error('HttpClient is not configured');
     const safeSlug = String(slug || '').trim();
     if (!/^[A-Za-z0-9_-]+$/.test(safeSlug)) throw new Error('Invalid manga slug');
 
-    const chapters = [Math.max(1, Number.parseInt(chapterNum, 10) || 1)];
-    if (chapters[0] === 1) chapters.push(2);
-    for (const chapter of chapters) {
-      const targetUrl = `https://demonicscans.org/title/${encodeURIComponent(safeSlug)}/chapter/${chapter}/1`;
+    const firstChapter = Number.isFinite(Number(chapterNum)) && Number(chapterNum) > 0 ? Number(chapterNum) : 1;
+    const targets = [];
+    if (chapterUrl) {
       try {
-        const response = await this.http.get(targetUrl, { retries: 1 });
+        const preferred = new URL(chapterUrl);
+        if (preferred.protocol === 'https:' && preferred.hostname === 'demonicscans.org') targets.push({ chapter: firstChapter, url: preferred.toString() });
+      } catch {
+        // Fall through to the canonical compatibility route.
+      }
+    }
+    targets.push({ chapter: firstChapter, url: `https://demonicscans.org/title/${encodeURIComponent(safeSlug)}/chapter/${firstChapter}/1` });
+    if (firstChapter === 1) targets.push({ chapter: 2, url: `https://demonicscans.org/title/${encodeURIComponent(safeSlug)}/chapter/2/1` });
+    for (const target of targets.filter((entry, index, list) => list.findIndex(other => other.url === entry.url) === index)) {
+      try {
+        const response = await this.http.get(target.url, { retries: 1 });
         if (!response.ok) continue;
         const match = response.text.match(/class=["'][^"']*\bval\b[^"']*["'][^>]*>\s*([0-9,]+)\s*\/\s*1,?000/i);
         const fallback = response.text.match(/"(?:farmed|energy)"\s*:\s*(\d+)/i);
@@ -169,7 +178,7 @@ class GameReader {
           return value;
         }
       } catch (error) {
-        Logger.logClient(this.accountName, `Farmed energy read failed for chapter ${chapter}: ${error.message}`);
+        Logger.logClient(this.accountName, `Farmed energy read failed for chapter ${target.chapter}: ${error.message}`);
       }
     }
     return null;

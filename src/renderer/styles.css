@@ -478,6 +478,12 @@ body {
   white-space: pre-line;
 }
 
+.page-info-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 0 2px;
+}
+
 .close-btn {
   background: none;
   border: none;
@@ -2619,7 +2625,7 @@ input[type="number"]::-webkit-outer-spin-button {
 
 .monster-config-row {
   display: grid;
-  grid-template-columns: minmax(48px, 1fr) 34px 26px 46px 26px 20px 26px 42px 40px 46px 46px 64px 42px 20px;
+  grid-template-columns: minmax(48px, 1fr) 34px 26px 46px 26px 42px 20px 26px 42px 40px 46px 46px 64px 42px 20px;
   gap: 2px;
   align-items: center;
   min-height: 27px;
@@ -2774,6 +2780,25 @@ input[type="number"]::-webkit-outer-spin-button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.boss-hunt-row .monster-config-name {
+  flex-wrap: wrap;
+  align-content: center;
+}
+
+.boss-hunt-area {
+  flex: 0 0 100%;
+  color: #7f8a98;
+  font-size: 8px;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.boss-hunt-row .monster-availability-count.is-active {
+  color: #70c996;
 }
 
 .workspace-icon-btn {
@@ -3199,6 +3224,54 @@ input[type="number"]::-webkit-outer-spin-button {
   display: flex;
   align-items: baseline;
   gap: 10px;
+}
+
+.runtime-status-badge {
+  margin-left: auto;
+  flex: 0 0 auto;
+  max-width: 240px;
+  padding: 3px 7px;
+  border: 1px solid #3c3c3c;
+  border-radius: 999px;
+  background: #242424;
+  color: #bdbdbd;
+  font-size: 10px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime-status-badge.is-active {
+  border-color: #315a3d;
+  background: #1d3023;
+  color: #86d39a;
+}
+
+.runtime-status-badge.is-scanning {
+  border-color: #315a7c;
+  background: #1d2c38;
+  color: #83b9df;
+}
+
+.runtime-status-badge.is-waiting,
+.runtime-status-badge.is-paused {
+  border-color: #705c2d;
+  background: #352e1c;
+  color: #e0bd65;
+}
+
+.runtime-status-badge.is-blocked,
+.runtime-status-badge.is-error {
+  border-color: #733d3d;
+  background: #381f1f;
+  color: #e58d8d;
+}
+
+.runtime-status-badge.is-stopped {
+  border-color: #454545;
+  background: #252525;
+  color: #a5a5a5;
 }
 
 .overview-current-label {

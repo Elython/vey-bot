@@ -1,16 +1,15 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { getDataPath } = require('../dataDirectory');
 const {
   assertAccountKey,
   buildMonsterFactVariantKey,
   buildMonsterTypeKey,
   isAccountKey,
 } = require('./worldState/identity');
-const { getDataDir } = require('../main/dataPaths');
 
 const ACCOUNT_DATABASE_SCHEMA_VERSION = 2;
-const DEFAULT_PATH = path.join(getDataDir(), 'account_database.json');
 const ACTIVITY_KINDS = new Set(['target', 'loot']);
 
 function clone(value) {
@@ -228,8 +227,8 @@ function statisticItemRows(entries = []) {
 }
 
 class AccountDatabase {
-  constructor(filePath = DEFAULT_PATH, options = {}) {
-    this.filePath = filePath;
+  constructor(filePath, options = {}) {
+    this.filePath = filePath || getDataPath('account_database.json');
     this.now = options.now || (() => Date.now());
     this.writeDebounceMs = Math.max(0, Math.trunc(Number(options.writeDebounceMs) || 0));
     this.maxActivitiesPerKind = Math.max(1, Math.trunc(Number(options.maxActivitiesPerKind) || 1000));

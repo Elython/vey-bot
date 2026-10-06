@@ -43,6 +43,12 @@ function deriveDiscoveryDemand(config = {}, { areas = null } = {}) {
     }
   }
 
+  if (config.general?.module === 'boss_hunt') {
+    for (const [areaKey, entries] of Object.entries(config.bossHunt?.targets || {})) {
+      if (hasEnabledEntry(entries)) demand(areaKey, 'boss_hunt');
+    }
+  }
+
   return catalog
     .filter(area => reasons.has(area.key))
     .map(area => ({ ...area, demandReasons: [...reasons.get(area.key)].sort() }));

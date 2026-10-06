@@ -2,17 +2,30 @@ const fs = require('fs');
 const path = require('path');
 
 const EventEmitter = require('events');
-const { getDataDir } = require('./dataPaths');
+const { getDataPath } = require('../dataDirectory');
 
 class Logger extends EventEmitter {
-  constructor() {
+  constructor(logsDir = null) {
     super();
-    this.logsDir = path.join(getDataDir(), 'logs');
-    if (!fs.existsSync(this.logsDir)) {
-      fs.mkdirSync(this.logsDir, { recursive: true });
-    }
+    this.logsDir = logsDir;
     this.maxLogBytes = 2 * 1024 * 1024;
     this.pendingWrites = new Set();
+  }
+
+  setLogsDirectory(logsDir) {
+    this.logsDir = path.resolve(String(logsDir || getDataPath('logs')));
+    return this._ensureLogsDirectory();
+  }
+
+  _ensureLogsDirectory() {
+    if (!this.logsDir) this.logsDir = getDataPath('logs');
+    try {
+      fs.mkdirSync(this.logsDir, { recursive: true, mode: 0o700 });
+      return true;
+    } catch (error) {
+      console.error(`Logging is unavailable: ${error.message}`);
+      return false;
+    }
   }
 
   getServerTimeString() {
@@ -24,7 +37,7 @@ class Logger extends EventEmitter {
   }
 
   logUser(accountName, action) {
-    if (!accountName) return;
+    if (!accountName || !this._ensureLogsDirectory()) return;
     const safeName = accountName.replace(/[^a-zA-Z0-9_-]/g, '_');
     const filePath = path.join(this.logsDir, `${safeName}_user.log`);
     const safeAction = this._redact(action);
@@ -34,7 +47,7 @@ class Logger extends EventEmitter {
   }
 
   logClient(accountName, action) {
-    if (!accountName) return;
+    if (!accountName || !this._ensureLogsDirectory()) return;
     const safeName = accountName.replace(/[^a-zA-Z0-9_-]/g, '_');
     const filePath = path.join(this.logsDir, `${safeName}_client.log`);
     const safeAction = this._redact(action);
@@ -58,6 +71,7 @@ class Logger extends EventEmitter {
 
   getUserLogs(accountName) {
     try {
+      if (!this._ensureLogsDirectory()) return 'Logging is unavailable.';
       if (!accountName) {
         // Read all user log files combined
         const files = fs.readdirSync(this.logsDir).filter(f => f.endsWith('_user.log'));
@@ -78,6 +92,7 @@ class Logger extends EventEmitter {
 
   getClientLogs(accountName) {
     try {
+      if (!this._ensureLogsDirectory()) return 'Logging is unavailable.';
       if (!accountName) {
         // Read all client and legacy auto log files combined
         const files = fs.readdirSync(this.logsDir).filter(f => f.endsWith('_client.log') || f.endsWith('_auto.log'));
@@ -116,6 +131,7 @@ class Logger extends EventEmitter {
 
   async deleteAccountLogs(accountName) {
     if (!accountName) return 0;
+    if (!this._ensureLogsDirectory()) return 0;
     await this.whenIdle();
     const safeName = accountName.replace(/[^a-zA-Z0-9_-]/g, '_');
     let removed = 0;
@@ -150,16 +166,6 @@ class Logger extends EventEmitter {
       pending.finally(() => this.pendingWrites.delete(pending));
     } catch (error) {
       console.error('Failed to rotate log:', error);
-    }
-  }
-  /**
-   * Reinitialize the logs directory after app.getPath becomes available.
-   * @param {string} [dataDir]
-   */
-  init(dataDir) {
-    this.logsDir = path.join(dataDir || getDataDir(), 'logs');
-    if (!fs.existsSync(this.logsDir)) {
-      fs.mkdirSync(this.logsDir, { recursive: true });
     }
   }
 }

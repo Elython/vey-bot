@@ -51,8 +51,20 @@ class ProgressionEngine {
     const potionFallbackEnabled = activeConfig.resources?.stamina?.allowPotions === true;
     const progress = parseXpProgress(state);
     const lootXpBoost = resolveLootXpBoost(state);
+    const chapterStamina = chapterFallbackEnabled ? Math.max(0, Number(chaptersAvailable) || 0) * 2 : 0;
+    const potionStamina = potionFallbackEnabled && state.targetStaminaPotion?.available === true
+      ? Math.max(0, Number(state.targetStaminaPotion.refillStamina) || 0) : 0;
+    const rate = this.xpModel?.getRate?.(accountName, state.level);
+    const staminaToLevel = progress.recognized && Number(rate?.xpPerStamina) > 0
+      ? Math.ceil(progress.needed / rate.xpPerStamina) : Infinity;
+    const currentStamina = Math.max(0, Number(state.stamina) || 0);
+    const reserve = Math.ceil(Math.max(0, Number(state.maxStamina) || 0) * Math.max(0, Number(activeConfig.resources?.stamina?.keepMin) || 0) / 100);
+    const naturalRefill = staminaToLevel > 0 && staminaToLevel <= currentStamina - reserve
+      ? Math.max(0, Number(state.maxStamina) - (currentStamina - staminaToLevel)) : 0;
+    const refillStamina = chapterStamina + potionStamina + naturalRefill;
     const base = {
       action: ProgressionAction.FOLLOW_BASE,
+      refillStamina,
       deferCurrentLoot: policy.useLootForLeveling === true,
       status: 'Monitoring',
       xpNeeded: progress.needed,

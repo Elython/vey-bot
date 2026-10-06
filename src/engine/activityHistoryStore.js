@@ -1,10 +1,9 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { getDataDir } = require('../main/dataPaths');
+const { getDataPath } = require('../dataDirectory');
 
 const ACTIVITY_HISTORY_SCHEMA_VERSION = 2;
-const DEFAULT_PATH = path.join(getDataDir(), 'activity_history.json');
 const HISTORY_KINDS = new Set(['target', 'loot']);
 
 function clone(value) {
@@ -39,8 +38,8 @@ function aggregateKey(entry) {
 }
 
 class ActivityHistoryStore {
-  constructor(filePath = DEFAULT_PATH, options = {}) {
-    this.filePath = filePath;
+  constructor(filePath, options = {}) {
+    this.filePath = filePath || getDataPath('activity_history.json');
     this.database = options.database || null;
     this.now = options.now || (() => Date.now());
     this.maxEntriesPerKind = Math.max(1, Math.trunc(Number(options.maxEntriesPerKind) || 1000));

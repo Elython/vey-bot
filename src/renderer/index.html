@@ -23,6 +23,7 @@
         <button class="tab-btn" id="tabEnergyFarmBtn" data-tab="energyFarm">Progression</button>
         <button class="tab-btn" id="tabBattlePassBtn" data-tab="battlePass">Battle Pass</button>
         <button class="tab-btn" id="tabAdventureQuestsBtn" data-tab="adventureQuests">Adv Quests</button>
+        <button class="tab-btn" id="tabBossHuntBtn" data-tab="bossHunt">Boss Hunt</button>
         <button class="tab-btn" id="tabNPCConfigBtn" data-tab="npcConfig">Targets</button>
         <button class="tab-btn" id="tabLootConfigBtn" data-tab="lootConfig">Looting</button>
         <button class="tab-btn" id="tabStatisticsBtn" data-tab="statistics">Statistics</button>
@@ -138,6 +139,7 @@
           <div class="overview-current-heading">
             <span class="overview-current-label">Current operation</span>
             <strong id="overviewTargetName">Nothing running</strong>
+            <span id="overviewRuntimeBadge" class="runtime-status-badge is-stopped">Stopped</span>
           </div>
           <div class="overview-current-reason" id="overviewActionReason">Choose a module and press Start.</div>
           <div class="overview-progress-row">
@@ -244,6 +246,7 @@
                   <option value="gates">Gates</option>
                   <option value="dungeons">Dungeons</option>
                   <option value="event">Event</option>
+                  <option value="boss_hunt">Boss Hunt</option>
                   <option value="auto_farm">Auto Farm</option>
                   <option value="battle_pass">Battle Pass</option>
                   <option value="adventure_quests">Adv Quests</option>
@@ -307,7 +310,7 @@
                       class="tree-input-sm" min="0" max="100"><span class="unit-label">%</span></div>
                 </div>
                 <div class="form-tree-row"><label class="form-tree-label" for="inputMaxDeaths">Max Deaths</label>
-                  <div class="form-tree-control"><input id="inputMaxDeaths" type="number" class="tree-input-sm" min="0">
+                  <div class="form-tree-control resource-counter"><span id="healthDeathsUsed" class="potion-count-used">0 deaths</span><input id="inputMaxDeaths" type="number" class="tree-input-sm" min="0" title="0 means unlimited"><span class="unit-label">0 = ∞</span>
                   </div>
                 </div>
                 <div class="form-tree-row"><label class="form-tree-label" for="chkUseHealingPotions">Use Healing
@@ -315,10 +318,8 @@
                   <div class="form-tree-control"><input id="chkUseHealingPotions" type="checkbox" class="tree-checkbox">
                   </div>
                 </div>
-                <div class="form-tree-row"><label class="form-tree-label" for="inputMaxHealingPotions">Max Healing
-                    Potions</label>
-                  <div class="form-tree-control"><input id="inputMaxHealingPotions" type="number" class="tree-input-sm"
-                      min="0"></div>
+                <div id="rowHealingPotionLimit" class="form-tree-row resource-child-row"><label class="form-tree-label" for="inputMaxHealingPotions">Healing potions limit</label>
+                  <div class="form-tree-control"><span class="potion-limit-status"><span id="healthPotsUsed" class="potion-count-used">0 used</span><span id="healthPotsAvailable" class="potion-count-available">0 left</span></span><input id="inputMaxHealingPotions" type="number" class="tree-input-sm" min="0"></div>
                 </div>
                 <div class="form-tree-row"><label class="form-tree-label" for="chkBuyHealthPotion">Buy Health pot if
                     needed (30k gold)</label>
@@ -356,14 +357,14 @@
                       <option value="large">Large pot</option>
                     </select></div>
                 </div>
-                <div class="form-tree-row resource-child-row"><label class="form-tree-label"
+                <div id="rowSmallManaPotLimit" class="form-tree-row resource-child-row"><label class="form-tree-label"
                     for="inputSmallManaPotLimit">Small pots limit</label>
-                  <div class="form-tree-control"><input id="inputSmallManaPotLimit" type="number" class="tree-input-sm"
+                  <div class="form-tree-control"><span class="potion-limit-status"><span id="smallManaPotsUsed" class="potion-count-used">0 used</span><span id="smallManaPotsAvailable" class="potion-count-available">0 left</span></span><input id="inputSmallManaPotLimit" type="number" class="tree-input-sm"
                       min="0"></div>
                 </div>
-                <div class="form-tree-row resource-child-row"><label class="form-tree-label"
+                <div id="rowLargeManaPotLimit" class="form-tree-row resource-child-row"><label class="form-tree-label"
                     for="inputLargeManaPotLimit">Large pots limit</label>
-                  <div class="form-tree-control"><input id="inputLargeManaPotLimit" type="number" class="tree-input-sm"
+                  <div class="form-tree-control"><span class="potion-limit-status"><span id="largeManaPotsUsed" class="potion-count-used">0 used</span><span id="largeManaPotsAvailable" class="potion-count-available">0 left</span></span><input id="inputLargeManaPotLimit" type="number" class="tree-input-sm"
                       min="0"></div>
                 </div>
                 <div class="form-tree-row"><label class="form-tree-label">Keep mana in range</label>
@@ -389,6 +390,7 @@
               </div>
             </div>
           </div>
+          <div class="page-info-footer"><button id="btnBotSetupPageInfo" class="btn btn-secondary btn-sm" type="button"><i data-lucide="circle-help"></i> Info</button></div>
         </div>
         <div id="subviewHomeEquipment" class="subview-panel home-config-panel" style="display: none;">
           <div id="combatPvePanel">
@@ -513,6 +515,7 @@
               </div>
             </div>
           </div>
+          <div class="page-info-footer"><button id="btnCombatPageInfo" class="btn btn-secondary btn-sm" type="button"><i data-lucide="circle-help"></i> Info</button></div>
           </div>
         </div>
         <div id="subviewHomeAutoFarm" class="subview-panel home-config-panel" style="display: none;">
@@ -614,13 +617,13 @@
           <div class="form-tree-row"><label class="form-tree-label" for="inputDungeonMinDelaySeconds">Dungeon minimum
               delay</label>
             <div class="form-tree-control input-unit-group"><input type="number" id="inputDungeonMinDelaySeconds"
-                value="0.01" min="0.01" max="60" step="0.01" class="tree-input-sm"><span class="unit-label">sec</span>
+                value="1.00" min="1" max="60" step="0.01" class="tree-input-sm"><span class="unit-label">sec</span>
             </div>
           </div>
           <div class="form-tree-row resource-child-row"><label class="form-tree-label"
               for="inputDungeonMaxDelaySeconds">Dungeon maximum delay</label>
             <div class="form-tree-control input-unit-group"><input type="number" id="inputDungeonMaxDelaySeconds"
-                value="0.05" min="0.01" max="120" step="0.01" class="tree-input-sm"><span class="unit-label">sec</span>
+                value="1.20" min="1" max="120" step="0.01" class="tree-input-sm"><span class="unit-label">sec</span>
             </div>
           </div>
           <div class="form-tree-row"><label class="form-tree-label" for="inputLootScanIntervalMinutes">Lootable scan
@@ -710,11 +713,6 @@
                   class="tree-checkbox"></div>
             </div>
             <div id="progressionLootLevelingOptions" class="progression-policy-group">
-            <div class="form-tree-row resource-child-row" id="rowProgressionDrainBeforeLoot">
-              <label class="form-tree-label" for="chkProgressionDrainBeforeLoot">Drain Stamina before loot</label>
-              <div class="form-tree-control"><input id="chkProgressionDrainBeforeLoot" type="checkbox"
-                  class="tree-checkbox" checked disabled></div>
-            </div>
             <div class="form-tree-row resource-child-row" id="rowProgressionDungeonSources">
               <label class="form-tree-label" for="chkProgressionLootDungeons">Loot from Dungeons</label>
               <div class="form-tree-control"><input id="chkProgressionLootDungeons" type="checkbox"
@@ -774,6 +772,7 @@
                 id="inputAdventureStaminaPotLimit" type="number" class="tree-input-sm" min="0"></div>
             </div>
           </div>
+          <div class="page-info-footer"><button id="btnProgressionPageInfo" class="btn btn-secondary btn-sm" type="button"><i data-lucide="circle-help"></i> Info</button></div>
         </div>
 
         <div id="subviewProgressionLoot" class="subview-panel home-config-panel" style="display: none;">
@@ -948,6 +947,7 @@
               </div>
             </div>
           </div>
+          <div class="page-info-footer"><button id="btnChaptersPageInfo" class="btn btn-secondary btn-sm" type="button"><i data-lucide="circle-help"></i> Info</button></div>
         </div>
 
       </section>
@@ -996,6 +996,22 @@
         <div id="adventureQuestList" class="objective-list objective-quest-table"></div>
         <div class="objective-actions"><span>Only enabled, server-identified quests are accepted automatically.</span></div>
       </section>
+      <section id="viewBossHunt" class="view-panel" style="display: none;">
+        <div class="panel-header-row">
+          <div>
+            <div class="panel-header">Boss Hunt</div>
+            <span id="bossHuntStatus" class="workspace-load-status" aria-live="polite"></span>
+          </div>
+          <button id="btnRefreshBossHunt" class="btn btn-primary btn-sm workspace-icon-btn" type="button"
+            title="Refresh bosses from all accessible Gates and Events" aria-label="Refresh Boss Hunt">
+            <i data-lucide="rotate-cw"></i>
+          </button>
+        </div>
+        <p class="compact-help">Boss Hunt uses independent targets and progress, and can move between every configured Gate and Event.</p>
+        <div id="bossHuntContent" class="monster-config-content">
+          <div class="empty-state">Open this workspace to load known bosses.</div>
+        </div>
+      </section>
       <!-- SCREEN 4: Monster configuration -->
       <section id="viewNPCConfig" class="view-panel" style="display: none;">
         <div class="subtabs-bar workspace-subtabs">
@@ -1019,6 +1035,8 @@
               <button id="btnCollectMonsterStats" class="btn btn-sm"
                 title="Collect verified stats for this area">Collect
                 stats</button>
+              <button id="btnTargetUnlimitedAll" class="btn btn-sm" type="button" title="Set every visible target to unlimited">∞ all</button>
+              <button id="btnTargetEnableAll" class="btn btn-sm" type="button" title="Enable every visible target">Target all</button>
               <button id="btnRefreshMonsterArea" class="btn btn-primary btn-sm workspace-icon-btn" type="button"
                 title="Refresh targets" aria-label="Refresh targets"><i data-lucide="rotate-cw"></i></button>
             </div>
@@ -1122,6 +1140,8 @@
               </select>
               <label for="lootAreaSelect">Area</label>
               <select id="lootAreaSelect" class="workspace-area-select" aria-label="Looting area"></select>
+              <button id="btnLootUnlimitedAll" class="btn btn-sm" type="button" title="Set every visible loot target to unlimited">∞ all</button>
+              <button id="btnLootEnableAll" class="btn btn-sm" type="button" title="Enable every visible loot target">Loot all</button>
               <button id="btnRefreshLootArea" class="btn btn-primary btn-sm workspace-icon-btn" type="button"
                 title="Refresh looting" aria-label="Refresh looting"><i data-lucide="rotate-cw"></i></button>
             </div>
@@ -1152,7 +1172,6 @@
           </div>
         </div>
       </section>
-
       <!-- Account-scoped statistics read from the local database; no network scan is performed here. -->
       <section id="viewStatistics" class="view-panel statistics-view" style="display: none;">
         <div class="panel-header-row statistics-toolbar">
@@ -1403,7 +1422,7 @@
     <span class="footer-item">Local:&nbsp;<span id="footerLocalTime">-</span></span>
   </div>
   <div class="footer-right">
-    <span class="footer-version">v2.5.3</span>
+    <span class="footer-version">v2.5.4</span>
   </div>
 </footer>
 </div>

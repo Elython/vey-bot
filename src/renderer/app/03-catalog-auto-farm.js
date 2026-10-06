@@ -74,6 +74,10 @@ const MODULE_DESCRIPTIONS = {
     title: 'Event module',
     body: 'Runs The Black Crown Ascends from its fixed Event wave. It uses the same Target, Combat, Health, pacing, and normal battle rules as Gates.',
   },
+  boss_hunt: {
+    title: 'Boss Hunt module',
+    body: 'Considers enabled Boss Hunt rows across every accessible Gate and Event. Its settings and completion counters are independent from Targets, Battle Pass, and Adventurer Quests.',
+  },
   auto_farm: {
     title: 'Auto Farm module',
     body: 'Synchronizes the selected Gate or Event targets with the game server Auto Farm and then enables it. Normal Combat, Health, Mana, Stamina, Looting, and Progression decisions are suspended until this module is stopped or changed.',
@@ -132,6 +136,95 @@ function showInfoDialog(description) {
   modalModuleInfo.style.display = 'flex';
 }
 
+const PAGE_HELP = Object.freeze({
+  setup: {
+    title: 'Bot Setup guide',
+    body: 'Module chooses the activity Veybot runs. Gate, Dungeon, or Event chooses where that module works. Progression config selects the resource and leveling policy.\n\nStamina controls when ordinary combat may continue. Health controls healing, death limits, and optional potion buying. Mana controls when class abilities may restore Mana. A Max Deaths value of 0 means unlimited.',
+  },
+  combat: {
+    title: 'Combat guide',
+    body: 'Fixed always requests the selected normal hit when it is affordable. Adaptive learns damage from server results and chooses a permitted hit for the remaining target.\n\nAllowed target overshoot is how far an Adaptive estimate may exceed the remaining target damage. Force x1 near target overrides that choice after Target progress reached is met. For example, 80% means all later normal hits are x1.\n\nClass abilities remain unused until you classify each one as Attack, Buff, Debuff, or Passive and explicitly allow it.',
+  },
+  progression: {
+    title: 'Progression guide',
+    body: 'Progression decides whether to bank loot for a level, farm Chapters, use an allowed Stamina potion, or wait. Loot is claimed only when verified eligible rewards can produce a level. Veybot always drains usable Stamina before claiming that level-up loot.\n\nSource lists decide which Dungeons, Events, and Gates may contribute loot. Chapter fallback and potion limits are separate fallback permissions.',
+  },
+  chapters: {
+    title: 'Chapter farming guide',
+    body: 'Manual posts the requested number of chapter reactions immediately. Automatic only permits Progression to use Chapters as a fallback; Allow Chapter fallback must also be enabled in Progression.\n\nAdd a manga using its title page URL, then Refresh after new chapters are published. Safety limits stop a manual run before Max Stamina, the configured farm target, or an hourly refill window. Each confirmed reaction restores 2 Stamina and is recorded once for the current 12-hour reward cycle.',
+  },
+});
+
+function addPageHelpTooltips(root, descriptions = {}) {
+  if (!root) return;
+  for (const row of root.querySelectorAll('.form-tree-row')) {
+    const label = row.querySelector('.form-tree-label')?.textContent?.replace(/\s+/g, ' ').trim();
+    if (!label) continue;
+    const control = row.querySelector('input, select, button');
+    row.title = descriptions[control?.id]
+      || `${label}: configure how this page behaves. Disabled rows do not apply to the selected module or parent option.`;
+  }
+}
+
+function showTabGuideOnce(tab, accountName) {
+  const page = { botSetup: 'setup', combat: 'combat', energyFarm: 'progression' }[tab];
+  const identity = String(accountName || '').trim();
+  if (!page || !identity || !modalModuleInfo) return;
+  const key = `veybot:onboarding:${encodeURIComponent(identity)}:${page}:v2`;
+  if (localStorage.getItem(key) === 'seen') return;
+  localStorage.setItem(key, 'seen');
+  showInfoDialog(PAGE_HELP[page]);
+}
+
+btnBotSetupPageInfo?.addEventListener('click', () => showInfoDialog(PAGE_HELP.setup));
+btnCombatPageInfo?.addEventListener('click', () => showInfoDialog(PAGE_HELP.combat));
+btnProgressionPageInfo?.addEventListener('click', () => showInfoDialog(PAGE_HELP.progression));
+btnChaptersPageInfo?.addEventListener('click', () => showInfoDialog(PAGE_HELP.chapters));
+
+addPageHelpTooltips(document.getElementById('subviewHomeGeneral'), {
+  selectGeneralModule: 'Choose the activity Veybot should run. Settings unrelated to that module stay visible but disabled.',
+  selectGeneralMap: 'Choose the Gate for ordinary Gate combat. Switching modules preserves your last Gate choice.',
+  selectGeneralDungeonMap: 'Choose the Dungeon whose configured targets may be attacked.',
+  selectGeneralEventMap: 'Choose an Event added through Settings → Gates. Event routes use event and wave identifiers.',
+  inputKeepStaminaMin: 'Ordinary combat preserves this percentage of maximum Stamina. Progression can spend below it when an allowed refill is available.',
+  inputKeepStaminaMax: 'Upper percentage of the base Stamina range.',
+  inputStopStaminaBelow: 'Stop automation when Stamina falls below this percentage. A value of 0 disables this hard stop.',
+  inputSleepHealthBelow: 'At or below this HP percentage, heal before attacking again. Allowed Healing Potions take priority over timed healing.',
+  inputMaxDeaths: 'Stop after this many verified combat deaths. Use 0 for unlimited deaths.',
+  chkUseHealingPotions: 'Allow a verified Healing Potion before timed healing when HP reaches the healing threshold.',
+  inputMaxHealingPotions: 'Maximum Healing Potions Veybot may use during this run.',
+  inputSmallManaPotLimit: 'Maximum Small Mana Potions Veybot may consume during this run.',
+  inputLargeManaPotLimit: 'Maximum Large Mana Potions Veybot may consume during this run.',
+  chkBuyHealthPotion: 'Allow buying a Healing Potion when needed, within the configured purchase count.',
+  inputMaxHealthPotionPurchases: 'Maximum Healing Potions Veybot may purchase. A confirmed purchase increases the counter.',
+  chkAllowManaPotions: 'Allow Mana potions to refill from the minimum Mana setting toward the maximum.',
+  selectManaPotionPriority: 'Try this Mana potion first, then another allowed potion if needed.',
+  inputKeepManaMin: 'Begin Mana restoration at this value. Values use increments of 20 Mana.',
+  inputKeepManaMax: 'Stop restoring Mana at this value. Small Mana potions may be consumed in batches of up to 10.',
+  chkBuyManaPotion: 'Allow buying Small Mana Potions when needed, within the configured purchase count.',
+  inputMaxManaPotionPurchases: 'Maximum Mana Potions Veybot may purchase. A confirmed purchase increases the counter.',
+});
+addPageHelpTooltips(document.getElementById('subviewHomeEquipment'), {
+  inputAttackOvershoot: 'Adaptive mode may exceed the remaining target damage by at most this percentage when choosing a normal hit.',
+  chkAdaptiveFailSafe: 'Force normal attacks to x1 after the configured target-progress threshold is reached.',
+  inputAdaptiveFailSafePercent: 'The target contribution percentage at which Force x1 begins. This only applies when Force x1 near target is enabled.',
+  selectAttackModule: 'Fixed uses the selected hit. Adaptive uses learned damage to choose a hit for the remaining target.',
+  selectFixedAttack: 'The normal hit requested in Fixed mode, with a smaller affordable hit when needed.',
+  selectAdaptiveMaxAttack: 'Largest normal hit Adaptive may choose. Class abilities have separate permissions.',
+  chkRequireTargetStamina: 'Wait for an allowed refill if current Stamina cannot reach the target damage. Chapter fallback and potions remain available.',
+  chkAllowClassAbilities: 'Allow only abilities you have classified and enabled. Select and Passive are never executed.',
+});
+addPageHelpTooltips(document.getElementById('subviewStaminaGeneral'));
+addPageHelpTooltips(document.getElementById('subviewChaptersFarm'), {
+  selectFarmModule: 'Manual runs only when you press Start. Automatic allows Progression to use Chapters as a fallback when its separate permission is enabled.',
+  inputManualChapterCount: 'Number of confirmed chapter reactions to post in this manual run.',
+  chkStopMaxStamina: 'Stop manual farming when current Stamina reaches the account maximum.',
+  inputMaxStaminaFarm: 'Stop manual farming when current farmed-energy progress reaches this value.',
+  inputStopHourlyStaminaMin: 'Do not begin another manual reaction this many minutes before the hourly Stamina refill.',
+  selectReactionType: 'Reaction sent to each chapter. Random chooses one of the five reactions for every request.',
+  inputMangaTarget: 'Use a supported manga title page URL. Veybot reads its real chapter links instead of guessing their route.',
+});
+
 if (btnModuleInfo) btnModuleInfo.addEventListener('click', () => {
   showInfoDialog(MODULE_DESCRIPTIONS[selectGeneralModule?.value] || MODULE_DESCRIPTIONS.idle);
 });
@@ -147,15 +240,15 @@ if (modalModuleInfo) {
 
 function replaceMapOptions(select, maps, preferred = null) {
   if (!select) return;
+  const current = select.value;
   select.replaceChildren(...maps.map(([value, label]) => {
     const option = document.createElement('option');
     option.value = value || '';
     option.textContent = label;
     return option;
   }));
-  if (preferred && [...select.options].some(option => option.value === preferred)) {
-    select.value = preferred;
-  }
+  const requested = preferred || current;
+  if (requested && [...select.options].some(option => option.value === requested)) select.value = requested;
 }
 
 function updateGeneralMaps(preferredMap = null, preferredDungeonMap = null, preferredGateMap = null, preferredEventMap = null) {

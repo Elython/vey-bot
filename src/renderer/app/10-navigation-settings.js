@@ -18,6 +18,7 @@ window.switchTab = function (tab) {
   tabStatisticsBtn?.classList.toggle('active', tab === 'statistics');
   tabBattlePassBtn?.classList.toggle('active', tab === 'battlePass');
   tabAdventureQuestsBtn?.classList.toggle('active', tab === 'adventureQuests');
+  tabBossHuntBtn?.classList.toggle('active', tab === 'bossHunt');
   if (tabConsoleBtn) tabConsoleBtn.classList.toggle('active', tab === 'console');
 
   const homeShellVisible = tab === 'home' || tab === 'botSetup' || tab === 'combat';
@@ -29,6 +30,7 @@ window.switchTab = function (tab) {
   if (viewStatistics) viewStatistics.style.display = tab === 'statistics' ? 'flex' : 'none';
   if (viewBattlePass) viewBattlePass.style.display = tab === 'battlePass' ? 'flex' : 'none';
   if (viewAdventureQuests) viewAdventureQuests.style.display = tab === 'adventureQuests' ? 'flex' : 'none';
+  if (viewBossHunt) viewBossHunt.style.display = tab === 'bossHunt' ? 'flex' : 'none';
   if (viewConsole) viewConsole.style.display = tab === 'console' ? 'flex' : 'none';
 
   if (tab === 'console') {
@@ -44,6 +46,7 @@ window.switchTab = function (tab) {
   if (tab === 'statistics') refreshStatistics();
   if (tab === 'battlePass') refreshBattlePass();
   if (tab === 'adventureQuests') refreshAdventureQuests();
+  if (tab === 'bossHunt') refreshBossHunt(false);
   if (homeStatsBar) homeStatsBar.style.display = tab === 'home' ? 'flex' : 'none';
   if (homeRuntimeStatus) homeRuntimeStatus.style.display = tab === 'home' ? 'flex' : 'none';
   if (overviewCurrentPanel) overviewCurrentPanel.style.display = tab === 'home' ? 'flex' : 'none';
@@ -58,6 +61,7 @@ window.switchTab = function (tab) {
       if (view) view.style.display = 'none';
     }
   }
+  showTabGuideOnce(tab, activeAccount);
 };
 
 document.querySelectorAll('[data-tab]').forEach(button => {

@@ -25,6 +25,7 @@ const htmlFragments = [
   'progression',
   'battle-pass',
   'adventure-quests',
+  'boss-hunt',
   'targets',
   'looting',
   'statistics',
@@ -47,6 +48,7 @@ const javascriptUnits = [
   '09-looting',
   '09a-statistics',
   '09b-objectives',
+  '09c-boss-hunt',
   '10-navigation-settings',
   '11-session-telemetry',
   '12-chapters',
@@ -131,6 +133,7 @@ function assertDomReferences(html, javascript) {
     'viewStatistics',
     'viewBattlePass',
     'viewAdventureQuests',
+    'viewBossHunt',
     'viewConsole'
   ];
   const missingViews = requiredViews.filter(id => !ids.has(id));

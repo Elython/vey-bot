@@ -53,9 +53,13 @@ async function refreshBattlePass() {
     if (!result?.success) throw new Error(result?.error || 'Battle Pass could not be read');
     latestBattlePassState = result.state;
     renderBattlePassCounters(result.state);
-    setWorkspaceStatus(battlePassStatus, result.state?.page?.active
-      ? 'Daily objectives refreshed.'
-      : 'No active Battle Pass was recognized.', result.state?.page?.active ? 'success' : '');
+    const page = result.state?.page || {};
+    const levelText = Number.isFinite(Number(page.level)) ? ` · level ${Number(page.level).toLocaleString()}` : '';
+    setWorkspaceStatus(battlePassStatus, page.completed === true
+      ? `Battle Pass complete${levelText}. Automation will not run it.`
+      : page.active
+        ? `Daily objectives refreshed${levelText}.`
+        : 'No active Battle Pass was recognized.', page.active || page.completed ? 'success' : '');
   } catch (error) {
     setWorkspaceStatus(battlePassStatus, error.message, 'error');
   } finally {
@@ -68,8 +72,7 @@ async function loadBattlePassPolicy() {
   if (chkBattlePassEnabled) chkBattlePassEnabled.checked = battlePassConfig.enabled === true;
   if (chkBattlePassLootIfAchievable) chkBattlePassLootIfAchievable.checked = battlePassConfig.lootIfAchievable === true;
   if (chkBattlePassSafeCheck) chkBattlePassSafeCheck.checked = battlePassConfig.safeCheck === true;
-  const battlePassAreas = GATE_MAPS.filter(([key]) => ['grakthar_2', 'grakthar_3'].includes(key));
-  replaceObjectiveOptions(selectBattlePassArea, battlePassAreas, battlePassConfig.areaKey || 'grakthar_3');
+  replaceObjectiveOptions(selectBattlePassArea, GATE_MAPS, battlePassConfig.areaKey || 'grakthar_3');
   await renderBattlePassTargets(selectBattlePassArea?.value);
 }
 
@@ -200,13 +203,7 @@ function adventureQuestPolicyFor(quest = {}) {
   const directId = Number(quest.policyId || quest.id);
   const direct = directId > 0 ? adventureQuestConfig.quests?.[String(directId)] : null;
   if (direct) return { policy: direct, draftKey: null, policyId: String(directId) };
-  const title = normalizedQuestText(quest.title);
-  const remembered = Object.entries(adventureQuestConfig.quests || {})
-    .find(([, candidate]) => normalizedQuestText(candidate?.matchTitle) === title);
-  if (remembered) return { policy: remembered[1], draftKey: null, policyId: remembered[0] };
-  const draft = Object.entries(adventureQuestConfig.drafts || {})
-    .find(([, candidate]) => normalizedQuestText(candidate?.matchTitle) === title);
-  return draft ? { policy: draft[1], draftKey: draft[0], policyId: null } : { policy: {}, draftKey: null, policyId: null };
+  return { policy: {}, draftKey: null, policyId: null };
 }
 
 async function populateQuestRequirement(type, areaKey, monsterKey, select, policy = {}) {
@@ -303,38 +300,10 @@ function getMonsterAreaFromCatalog(areaKey) {
 function renderAdventureQuests(state) {
   if (!adventureQuestList) return;
   const serverQuests = (state?.page?.quests || []).map(quest => ({ ...quest }));
-  const configuredIds = Object.keys(adventureQuestConfig.quests || {}).sort((left, right) => Number(left) - Number(right));
-  const representedIds = new Set(serverQuests.filter(quest => Number(quest.id) > 0).map(quest => String(quest.id)));
-  const unmatchedIds = configuredIds.filter(id => !representedIds.has(id));
-  for (const quest of serverQuests.filter(candidate => !(Number(candidate.id) > 0))) {
-    const title = normalizedQuestText(quest.title);
-    const rememberedId = unmatchedIds.find(id => normalizedQuestText(adventureQuestConfig.quests?.[id]?.matchTitle) === title);
-    if (!rememberedId) continue;
-    quest.policyId = Number(rememberedId);
-    representedIds.add(rememberedId);
-    unmatchedIds.splice(unmatchedIds.indexOf(rememberedId), 1);
-  }
-  const unresolvedServer = serverQuests.filter(quest => !(Number(quest.id) > 0) && !(Number(quest.policyId) > 0));
-  if (unresolvedServer.length > 0 && unresolvedServer.length === unmatchedIds.length) {
-    unresolvedServer.forEach((quest, index) => {
-      quest.policyId = Number(unmatchedIds[index]);
-      representedIds.add(unmatchedIds[index]);
-    });
-    unmatchedIds.length = 0;
-  }
-  const rows = [...serverQuests];
-  for (const id of configuredIds) {
-    if (!representedIds.has(id)) rows.push({ id: Number(id), title: `Saved Quest ${id}`, objective: '', status: 'saved' });
-  }
-  const representedDrafts = new Set();
-  for (const quest of rows) {
-    const matched = adventureQuestPolicyFor(quest);
-    if (matched.draftKey) representedDrafts.add(matched.draftKey);
-  }
-  for (const [draftKey, policy] of Object.entries(adventureQuestConfig.drafts || {})) {
-    if (representedDrafts.has(draftKey)) continue;
-    rows.push({ id: null, title: policy.matchTitle || 'Saved quest', objective: policy.matchObjective || '', status: 'saved', savedDraftKey: draftKey });
-  }
+  // The authenticated board is authoritative. Imported configuration may
+  // contain policies for another account's board; never synthesize those stale
+  // quests into this account's list.
+  const rows = serverQuests;
   if (rows.length === 0) {
     adventureQuestList.innerHTML = '<div class="empty-state">No quest cards were exposed by the current page.</div>';
     return;

@@ -416,10 +416,6 @@ function updateProgressionControls() {
   updateProgressionSourceCount(progressionDungeonSourceList, progressionDungeonSourceCount);
   updateProgressionSourceCount(progressionEventSourceList, progressionEventSourceCount);
   updateProgressionSourceCount(progressionGateSourceList, progressionGateSourceCount);
-  if (rowProgressionDrainBeforeLoot) {
-    rowProgressionDrainBeforeLoot.classList.toggle('module-setting-disabled', !lootLevelingEnabled);
-    rowProgressionDrainBeforeLoot.setAttribute('aria-disabled', String(!lootLevelingEnabled));
-  }
   renderProgressionStatus();
 }
 
@@ -558,4 +554,10 @@ function updatePotionPolicyControls() {
     control.disabled = !manaEnabled;
     control.closest('.form-tree-row')?.classList.toggle('module-setting-disabled', !manaEnabled);
   }
+  const healthEnabled = chkUseHealingPotions?.checked === true;
+  if (rowHealingPotionLimit) {
+    rowHealingPotionLimit.classList.toggle('module-setting-disabled', !healthEnabled);
+    rowHealingPotionLimit.setAttribute('aria-disabled', String(!healthEnabled));
+  }
+  if (inputMaxHealingPotions) inputMaxHealingPotions.disabled = !healthEnabled;
 }

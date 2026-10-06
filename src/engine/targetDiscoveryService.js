@@ -151,7 +151,7 @@ class TargetDiscoveryService {
   async listCombatMonsters(areaKey, options = {}) {
     const snapshot = await this.readAreaSnapshot(areaKey, {
       priority: ReadPriority.COMBAT,
-      maxAgeMs: 0,
+      maxAgeMs: options.maxAgeMs ?? 0,
       force: options.force === true,
       signal: options.signal || null,
     });

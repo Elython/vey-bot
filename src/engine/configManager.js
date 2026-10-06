@@ -1,9 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { getDataPath } = require('../dataDirectory');
 const { MONSTER_AREAS, configureMonsterAreas, listMonsterAreas, getMonsterArea, supportsAutoFarm, monsterTypeKey } = require('./monsterCatalog');
 const { CUBE_PVP_NODES } = require('./cubeCatalog');
-const { getDataDir } = require('../main/dataPaths');
 
 const DEFAULT_CONFIG = Object.freeze({
   general: {
@@ -12,7 +12,7 @@ const DEFAULT_CONFIG = Object.freeze({
     primaryGateMap: 'grakthar_1',
     dungeonMap: 'shadowbridge_warrens',
     gateMap: 'grakthar_1',
-    eventMap: 'event_black_crown_ascends',
+    eventMap: null,
   },
   areaCatalog: { custom: [], hidden: [] },
   gates: {
@@ -25,7 +25,6 @@ const DEFAULT_CONFIG = Object.freeze({
     allowAbilities: false,
     allowedAbilityIds: [],
     abilityPolicies: {},
-    staminaReserve: 50,
     attackDelayMs: { min: 600, max: 1200 },
     attackStrategy: {
       mode: 'fixed',
@@ -55,6 +54,9 @@ const DEFAULT_CONFIG = Object.freeze({
     areaKey: 'grakthar_3',
     lootIfAchievable: false,
     safeCheck: false,
+    targets: {},
+  },
+  bossHunt: {
     targets: {},
   },
   autoFarm: {
@@ -245,7 +247,7 @@ function validateConfig(input = {}) {
   const staminaPotionSelections = new Set(['none', 'auto', 'small', 'large', 'full', 'adventure']);
 
   const generalModules = new Set([
-    'gates', 'dungeons', 'event', 'auto_farm', 'pvp', 'battle_pass', 'adventure_quests', 'idle',
+    'gates', 'dungeons', 'event', 'boss_hunt', 'auto_farm', 'pvp', 'battle_pass', 'adventure_quests', 'idle',
   ]);
   if (!config.general || typeof config.general !== 'object' || Array.isArray(config.general)) {
     config.general = clone(DEFAULT_CONFIG.general);
@@ -323,7 +325,7 @@ function validateConfig(input = {}) {
   config.combat.abilityPolicies = {};
   for (const [rawId, policy] of Object.entries(abilityPolicies).slice(0, 100)) {
     if (!/^\d{1,12}$/.test(rawId) || !policy || typeof policy !== 'object' || Array.isArray(policy)) continue;
-    const role = ['attack', 'buff', 'debuff', 'passive'].includes(policy.role) ? policy.role : 'attack';
+    const role = ['select', 'attack', 'buff', 'debuff', 'passive'].includes(policy.role) ? policy.role : 'select';
     config.combat.abilityPolicies[rawId] = {
       role,
       maxUses: Math.trunc(clampNumber(policy.maxUses, 0, 0, 1000000)),
@@ -332,7 +334,10 @@ function validateConfig(input = {}) {
       minimumNextAttackStamina: Math.trunc(clampNumber(policy.minimumNextAttackStamina, 0, 0, 1000000)),
     };
   }
-  config.combat.staminaReserve = Math.trunc(clampNumber(config.combat.staminaReserve, 50, 0, 1000000));
+  // Legacy absolute Stamina reserves were never exposed in the UI and could
+  // silently override the visible percentage policy. Discard them on load;
+  // runtime planning derives its reserve from resources.stamina.keepMin.
+  delete config.combat.staminaReserve;
 
   if (!config.cubePvp || typeof config.cubePvp !== 'object' || Array.isArray(config.cubePvp)) {
     config.cubePvp = clone(DEFAULT_CONFIG.cubePvp);
@@ -414,7 +419,9 @@ function validateConfig(input = {}) {
     config.battlePass = clone(DEFAULT_CONFIG.battlePass);
   }
   const battlePassArea = getMonsterArea(config.battlePass.areaKey);
-  const supportedBattlePassAreas = new Set(['grakthar_2', 'grakthar_3']);
+  const supportedBattlePassAreas = new Set(visibleAreas
+    .filter(area => area.type === 'gate' && !area.eventId)
+    .map(area => area.key));
   const selectedBattlePassArea = battlePassArea?.type === 'gate' && supportedBattlePassAreas.has(battlePassArea.key)
     ? battlePassArea.key : DEFAULT_CONFIG.battlePass.areaKey;
   const configuredBattlePassTargets = config.battlePass.targets && typeof config.battlePass.targets === 'object'
@@ -718,6 +725,55 @@ function validateConfig(input = {}) {
         name,
         targetDamage: Math.trunc(clampNumber(entry.targetDamage, 0, 0, Number.MAX_SAFE_INTEGER)),
         killCount: Math.trunc(clampNumber(entry.killCount, 0, 0, 1000000)),
+        dungeonKillCount: Math.trunc(clampNumber(entry.dungeonKillCount, 0, 0, 1000000)),
+        unlimited: entry.unlimited === true,
+        priority: Math.trunc(clampNumber(entry.priority, 0, 0, 1000000)),
+        minimumHp: Math.trunc(clampNumber(entry.minimumHp, 0, 0, Number.MAX_SAFE_INTEGER)),
+        completedCount: Math.trunc(clampNumber(entry.completedCount, 0, 0, 1000000)),
+        completedInstanceIds: [...new Set(
+          (Array.isArray(entry.completedInstanceIds) ? entry.completedInstanceIds : [])
+            .map(value => String(value))
+            .filter(value => /^\d{1,30}$/.test(value))
+        )].slice(-2000),
+        completedByDungeon: Object.fromEntries(Object.entries(
+          entry.completedByDungeon && typeof entry.completedByDungeon === 'object' && !Array.isArray(entry.completedByDungeon)
+            ? entry.completedByDungeon : {},
+        ).filter(([instanceId]) => /^\d{1,30}$/.test(instanceId)).slice(-100).map(([instanceId, count]) => [
+          instanceId,
+          Math.trunc(clampNumber(count, 0, 0, 1000000)),
+        ])),
+        gearSet: quickSetSelections.has(entry.gearSet) ? entry.gearSet : 'default',
+        petSet: quickSetSelections.has(entry.petSet) ? entry.petSet : 'default',
+        staminaPotion: staminaPotionSelections.has(entry.staminaPotion) ? entry.staminaPotion : 'none',
+        allowAbilities: entry.allowAbilities === true,
+        enabled: entry.enabled === true,
+      };
+    }
+    validatedMonsterMaps[areaKey] = validatedEntries;
+  }
+  config.monsters = { maps: validatedMonsterMaps };
+
+  const configuredBossTargets = config.bossHunt?.targets
+    && typeof config.bossHunt.targets === 'object' && !Array.isArray(config.bossHunt.targets)
+    ? config.bossHunt.targets : {};
+  const validatedBossTargets = {};
+  for (const [areaKey, entries] of Object.entries(configuredBossTargets)) {
+    const area = getMonsterArea(areaKey);
+    if (!area || !['gate', 'event'].includes(area.type)
+      || !entries || typeof entries !== 'object' || Array.isArray(entries)) continue;
+    const validatedEntries = {};
+    for (const [targetKey, entry] of Object.entries(entries).slice(0, 200)) {
+      if (!/^[a-z0-9][a-z0-9_-]{0,119}$/.test(targetKey)
+        || !entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+      const name = typeof entry.name === 'string' ? entry.name.trim().slice(0, 160) : '';
+      if (!name) continue;
+      const phase = Math.max(0, Math.trunc(clampNumber(entry.phase, 0, 0, 1000)));
+      validatedEntries[targetKey] = {
+        name,
+        monsterKey: monsterTypeKey(entry.monsterKey || name),
+        phase: phase || null,
+        targetDamage: Math.trunc(clampNumber(entry.targetDamage, 0, 0, Number.MAX_SAFE_INTEGER)),
+        killCount: Math.trunc(clampNumber(entry.killCount, 0, 0, 1000000)),
         unlimited: entry.unlimited === true,
         priority: Math.trunc(clampNumber(entry.priority, 0, 0, 1000000)),
         minimumHp: Math.trunc(clampNumber(entry.minimumHp, 0, 0, Number.MAX_SAFE_INTEGER)),
@@ -734,9 +790,9 @@ function validateConfig(input = {}) {
         enabled: entry.enabled === true,
       };
     }
-    validatedMonsterMaps[areaKey] = validatedEntries;
+    if (Object.keys(validatedEntries).length > 0) validatedBossTargets[areaKey] = validatedEntries;
   }
-  config.monsters = { maps: validatedMonsterMaps };
+  config.bossHunt = { targets: validatedBossTargets };
 
   if (!config.resources || typeof config.resources !== 'object' || Array.isArray(config.resources)) {
     config.resources = clone(DEFAULT_CONFIG.resources);
@@ -956,8 +1012,8 @@ function validateConfig(input = {}) {
 }
 
 class ConfigManager {
-  constructor(configPath = path.join(getDataDir(), 'bot_config.json'), options = {}) {
-    this.configPath = configPath;
+  constructor(configPath, options = {}) {
+    this.configPath = configPath || getDataPath('bot_config.json');
     this.accountDatabase = options.accountDatabase || null;
     this.activeAccount = null;
     this.legacyConfig = validateConfig(this._read());

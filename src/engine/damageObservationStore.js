@@ -2,10 +2,9 @@ const fs = require('fs');
 const path = require('path');
 const { hashCanonical } = require('./loadoutCatalog');
 const { NORMAL_ATTACKS } = require('./attackPlanner');
-const { getDataDir } = require('../main/dataPaths');
+const { getDataPath } = require('../dataDirectory');
 
 const DAMAGE_OBSERVATION_SCHEMA_VERSION = 1;
-const DEFAULT_PATH = path.join(getDataDir(), 'damage_observations.json');
 const MULTIPLIER_BY_SKILL_ID = new Map(NORMAL_ATTACKS.map(attack => [attack.id, attack.multiplier]));
 
 function clone(value) {
@@ -93,8 +92,8 @@ function classifyAttackResult(result, skill) {
 }
 
 class DamageObservationStore {
-  constructor(filePath = DEFAULT_PATH, options = {}) {
-    this.filePath = filePath;
+  constructor(filePath, options = {}) {
+    this.filePath = filePath || getDataPath('damage_observations.json');
     this.now = options.now || (() => Date.now());
     this.maxRecords = Number.isInteger(options.maxRecords) ? Math.max(1, options.maxRecords) : 500;
     this.maxSamplesPerClass = Number.isInteger(options.maxSamplesPerClass)

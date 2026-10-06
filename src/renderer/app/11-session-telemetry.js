@@ -368,10 +368,16 @@ window.botAPI.onLootDiscovery?.(snapshot => {
 
 function renderOverviewTelemetry(telemetry) {
   if (!telemetry) return;
+  const runtime = telemetry.runtimeStatus || {};
   if (botActionText) botActionText.textContent = telemetry.currentAction || '-';
   if (botTargetText) botTargetText.textContent = telemetry.target?.name || '-';
-  if (overviewTargetName) overviewTargetName.textContent = telemetry.target?.name || 'Nothing running';
-  if (overviewActionReason) overviewActionReason.textContent = telemetry.currentReason || 'Waiting for the next decision.';
+  if (overviewTargetName) overviewTargetName.textContent = telemetry.target?.name || runtime.title || 'Nothing running';
+  if (overviewActionReason) overviewActionReason.textContent = runtime.detail || telemetry.currentReason || 'Waiting for the next decision.';
+  if (overviewRuntimeBadge) {
+    const kind = String(runtime.kind || 'active').toLowerCase();
+    overviewRuntimeBadge.textContent = runtime.title || telemetry.state || 'Working';
+    overviewRuntimeBadge.className = `runtime-status-badge is-${kind}`;
+  }
   const currentDamage = Number(telemetry.target?.userDmg || 0);
   const targetDamage = Number(telemetry.target?.targetDamage || 0);
   const progressPercent = targetDamage > 0 ? Math.min(100, Math.max(0, (currentDamage / targetDamage) * 100)) : 0;
@@ -414,10 +420,30 @@ function renderOverviewTelemetry(telemetry) {
   if (overviewSessionHealthPots) overviewSessionHealthPots.textContent = (Number(runStats.healthPotionsUsed) || 0).toLocaleString();
   if (overviewSessionErrors) overviewSessionErrors.textContent = (Number(runStats.errors) || 0).toLocaleString();
   renderOverviewPotionCounters(telemetry.potions);
+  renderBotSetupResourceCounters(telemetry);
   renderMonsterPhasePvpTelemetry(telemetry.monsterPhasePvp);
   renderProgressionStaminaPotionCounters(telemetry);
   runtimeDryRun = telemetry.dryRun !== false;
   renderBotModeState();
+}
+
+function renderBotSetupResourceCounters(telemetry = {}) {
+  const runStats = telemetry.stats || {};
+  const available = { health: 0, smallMana: 0, largeMana: 0 };
+  for (const item of telemetry.potions?.items || []) {
+    const quantity = Math.max(0, Number(item?.quantity) || 0);
+    if (item?.category === 'health') available.health += quantity;
+    if (item?.category === 'mana' && item?.type === 'small') available.smallMana += quantity;
+    if (item?.category === 'mana' && item?.type === 'large') available.largeMana += quantity;
+  }
+  const recognized = telemetry.potions?.recognized === true;
+  if (healthDeathsUsed) healthDeathsUsed.textContent = `${Math.max(0, Number(runStats.deaths) || 0).toLocaleString()} deaths`;
+  if (healthPotsUsed) healthPotsUsed.textContent = `${Math.max(0, Number(runStats.healthPotionsUsed) || 0).toLocaleString()} used`;
+  if (healthPotsAvailable) healthPotsAvailable.textContent = recognized ? `${available.health.toLocaleString()} left` : '— left';
+  if (smallManaPotsUsed) smallManaPotsUsed.textContent = `${Math.max(0, Number(runStats.manaPotionsUsed?.small) || 0).toLocaleString()} used`;
+  if (smallManaPotsAvailable) smallManaPotsAvailable.textContent = recognized ? `${available.smallMana.toLocaleString()} left` : '— left';
+  if (largeManaPotsUsed) largeManaPotsUsed.textContent = `${Math.max(0, Number(runStats.manaPotionsUsed?.large) || 0).toLocaleString()} used`;
+  if (largeManaPotsAvailable) largeManaPotsAvailable.textContent = recognized ? `${available.largeMana.toLocaleString()} left` : '— left';
 }
 
 function renderMonsterPhasePvpTelemetry(phase) {

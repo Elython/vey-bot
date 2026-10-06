@@ -47,6 +47,10 @@ function updateAttackModuleRows() {
   if (rowAdaptiveNukeAbilities) rowAdaptiveNukeAbilities.style.display = adaptive ? 'flex' : 'none';
   if (rowAdaptiveFailSafePercent) {
     rowAdaptiveFailSafePercent.style.display = adaptive ? 'flex' : 'none';
+    const enabled = adaptive && chkAdaptiveFailSafe?.checked === true;
+    rowAdaptiveFailSafePercent.classList.toggle('module-setting-disabled', !enabled);
+    rowAdaptiveFailSafePercent.setAttribute('aria-disabled', String(!enabled));
+    if (inputAdaptiveFailSafePercent) inputAdaptiveFailSafePercent.disabled = !enabled;
   }
 }
 
@@ -200,13 +204,13 @@ function renderUnlockedAbilities(data) {
       else allowedCombatAbilityIds.delete(skill.id);
       saveAttackStrategy();
     });
-    const savedPolicy = combatAbilityPolicies[String(skill.id)] || { role: 'attack', maxUses: 0, initialWaitTurns: 0, reapplyTurns: 1, minimumNextAttackStamina: 0 };
+    const savedPolicy = combatAbilityPolicies[String(skill.id)] || { role: 'select', maxUses: 0, initialWaitTurns: 0, reapplyTurns: 1, minimumNextAttackStamina: 0 };
     const role = document.createElement('select');
     role.className = 'tree-select combat-ability-role';
-    for (const [value, label] of [['attack', 'Attack'], ['buff', 'Buff'], ['debuff', 'Debuff'], ['passive', 'Passive']]) {
+    for (const [value, label] of [['select', 'Select'], ['attack', 'Attack'], ['buff', 'Buff'], ['debuff', 'Debuff'], ['passive', 'Passive']]) {
       role.append(new Option(label, value));
     }
-    role.value = savedPolicy.role || 'attack';
+    role.value = savedPolicy.role || 'select';
     role.disabled = chkAllowClassAbilities?.checked !== true;
     role.title = 'Choose how the scheduler treats this ability.';
     const makePolicyInput = (value, min, label) => {
@@ -228,11 +232,11 @@ function renderUnlockedAbilities(data) {
       ? Number(savedPolicy.minimumNextAttackStamina) : 1);
     minimumNextAttack.title = 'Buff/Debuff only: use this support ability when the next damaging attack costs at least this much ST.';
     const updatePolicyAvailability = () => {
-      const disabled = chkAllowClassAbilities?.checked !== true || role.value === 'passive';
+      const disabled = chkAllowClassAbilities?.checked !== true || ['select', 'passive'].includes(role.value);
       checkbox.disabled = disabled;
       for (const input of [maxUses, initialWait, repeatWait]) input.disabled = disabled;
       minimumNextAttack.disabled = disabled || role.value === 'attack';
-      if (role.value === 'passive') checkbox.checked = false;
+      if (['select', 'passive'].includes(role.value)) checkbox.checked = false;
     };
     const savePolicy = () => {
       combatAbilityPolicies[String(skill.id)] = {
@@ -247,7 +251,7 @@ function renderUnlockedAbilities(data) {
       saveAttackStrategy();
     };
     role.addEventListener('change', () => {
-      if (role.value === 'passive') allowedCombatAbilityIds.delete(skill.id);
+      if (['select', 'passive'].includes(role.value)) allowedCombatAbilityIds.delete(skill.id);
       updatePolicyAvailability();
       populateNukeAttackOptions(activeClassSkills);
       savePolicy();
@@ -384,6 +388,7 @@ function loadHomeConfiguration(config) {
   autoFarmConfig = config.autoFarm || { maps: {}, settings: {} };
   adventureQuestConfig = config.adventureQuests || { quests: {}, drafts: {} };
   battlePassConfig = config.battlePass || { enabled: false, areaKey: 'grakthar_3', lootIfAchievable: false, safeCheck: false, targets: {} };
+  bossHuntConfig = config.bossHunt || { targets: {} };
   loadBattlePassPolicy();
   renderAdventureQuests(latestAdventureQuestState);
   areaCatalogConfig = config.areaCatalog || { custom: [], hidden: [] };
@@ -467,8 +472,8 @@ function loadSchedulerConfiguration(config) {
   const attackIntervals = config.scheduler?.attackIntervals || {};
   if (inputGateMinDelaySeconds) inputGateMinDelaySeconds.value = ((attackIntervals.gate?.minDelay || 1050) / 1000).toFixed(2);
   if (inputGateMaxDelaySeconds) inputGateMaxDelaySeconds.value = ((attackIntervals.gate?.maxDelay || 1200) / 1000).toFixed(2);
-  if (inputDungeonMinDelaySeconds) inputDungeonMinDelaySeconds.value = ((attackIntervals.dungeon?.minDelay || 10) / 1000).toFixed(2);
-  if (inputDungeonMaxDelaySeconds) inputDungeonMaxDelaySeconds.value = ((attackIntervals.dungeon?.maxDelay || 50) / 1000).toFixed(2);
+  if (inputDungeonMinDelaySeconds) inputDungeonMinDelaySeconds.value = ((attackIntervals.dungeon?.minDelay || 1000) / 1000).toFixed(2);
+  if (inputDungeonMaxDelaySeconds) inputDungeonMaxDelaySeconds.value = ((attackIntervals.dungeon?.maxDelay || 1200) / 1000).toFixed(2);
   if (inputLootScanIntervalMinutes) inputLootScanIntervalMinutes.value = Math.max(1, Number(config.scheduler?.lootScanIntervalMinutes) || 1);
   if (inputTargetScanIntervalSeconds) inputTargetScanIntervalSeconds.value = Math.max(1, Number(config.scheduler?.targetScanIntervalSeconds) || 1);
   savedDryRun = config.safety?.dryRun !== false;
@@ -560,6 +565,7 @@ for (const control of [
 }
 chkAllowStaminaPots?.addEventListener('change', updatePotionPolicyControls);
 chkAllowManaPotions?.addEventListener('change', updatePotionPolicyControls);
+chkUseHealingPotions?.addEventListener('change', updatePotionPolicyControls);
 updatePotionPolicyControls();
 async function resetPurchaseCounter(type) {
   const result = await updateCanonicalConfig({ resources: { [type]: { purchasedCount: 0 } } });

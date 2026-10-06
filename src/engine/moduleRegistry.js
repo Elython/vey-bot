@@ -5,6 +5,7 @@ const BUILTIN_MODULES = Object.freeze({
   gates: { id: 'gates', label: 'Gates', status: 'ready', mapTypes: ['gate'] },
   dungeons: { id: 'dungeons', label: 'Dungeons', status: 'ready', mapTypes: ['dungeon'] },
   event: { id: 'event', label: 'Event', status: 'ready', mapTypes: ['event'] },
+  boss_hunt: { id: 'boss_hunt', label: 'Boss Hunt', status: 'ready', mapTypes: ['gate', 'event'] },
   battle_pass: { id: 'battle_pass', label: 'Battle Pass', status: 'ready', mapTypes: [] },
   adventure_quests: { id: 'adventure_quests', label: 'Adv Quests', status: 'ready', mapTypes: [] },
   pvp: { id: 'pvp', label: 'PvP', status: 'deferred', mapTypes: [] },
@@ -40,6 +41,7 @@ class ModuleRegistry {
 
   resolveScan(general = {}) {
     const definition = this.modules.get(general.module || 'idle');
+    if (definition?.id === 'boss_hunt') return { kind: 'boss_hunt' };
     if (definition?.id === 'event') {
       const eventArea = getMonsterArea(general.eventMap || general.map);
       if (eventArea?.type === 'event' && Number.isInteger(eventArea.eventId)) {
@@ -60,7 +62,9 @@ class ModuleRegistry {
 
   describe(general = {}) {
     const definition = this.modules.get(general.module || 'idle') || BUILTIN_MODULES.idle;
-    const area = getMonsterArea(definition.id === 'event' ? (general.eventMap || general.map) : general.map);
+    const area = definition.id === 'boss_hunt'
+      ? null
+      : getMonsterArea(definition.id === 'event' ? (general.eventMap || general.map) : general.map);
     return {
       id: definition.id,
       label: definition.label,

@@ -13,6 +13,7 @@
 
 const { ModuleRegistry } = require('./moduleRegistry');
 const { AttackPlanner } = require('./attackPlanner');
+const { staminaMinimumAmount } = require('./resourcePolicyEngine');
 
 /**
  * @typedef {Object} GameState
@@ -33,7 +34,7 @@ const { AttackPlanner } = require('./attackPlanner');
 /**
  * @typedef {Object} BotConfig
  * @property {Object} gates - { targetGate, targetWave }
- * @property {Object} combat - { preferredSkill, staminaReserve, attackDelayMs }
+ * @property {Object} combat - attack and ability policy
  * @property {Object} healing - { mode, hpThresholdPercent }
  * @property {Object} looting - { autoLoot, lootDelay }
  * @property {Object} energyFarming - { enabled, farmWhenStaminaBelow, reactionType, maxPerSession }
@@ -241,7 +242,7 @@ class StrategyEngine {
         return {
           action: 'WAIT',
           params: {},
-          reason: `Target requires about ${plan.requiredStamina || 0} stamina; ${plan.availableStamina || 0} is available after reserve`,
+          reason: `Target requires about ${plan.requiredStamina || 0} stamina; ${plan.availableStamina || 0} is available now above the configured ${plan.reservePercent || 0}% minimum, plus ${plan.refillStamina || 0} from verified permitted refills`,
         };
       }
       if (this._canAffordSkill(state, skill)) {
@@ -286,7 +287,7 @@ class StrategyEngine {
         },
         reason: progressionFallback
           ? `Using one ${state.targetStaminaPotion.name} after draining available Stamina`
-          : `Using one ${state.targetStaminaPotion.name}; no permitted attack is affordable above the Stamina reserve`,
+          : `Using one ${state.targetStaminaPotion.name}; no permitted attack is affordable above the configured Stamina minimum`,
       };
     }
 
@@ -301,16 +302,20 @@ class StrategyEngine {
         action: 'SCAN',
         params: scan,
         reason: scanForTargetPotion
-          ? 'Stamina is below reserve; locating a target-authorized Stamina potion'
+          ? 'Stamina is at or below its configured minimum; locating a target-authorized Stamina potion'
           : 'No active battle, scanning for monsters',
       };
     }
 
     // ── Priority 6: WAIT ──
+    const reserve = staminaMinimumAmount(this.config, state);
+    const reservePercent = Math.max(0, Number(this.config.resources?.stamina?.keepMin) || 0);
     return {
       action: 'WAIT',
       params: {},
-      reason: `Stamina ${state.stamina}/${state.maxStamina}, waiting for regen`,
+      reason: Number(state.stamina) <= reserve
+        ? `Stamina ${state.stamina}/${state.maxStamina} is at or below the configured minimum (${reserve.toLocaleString()} / ${reservePercent}%); waiting for regeneration`
+        : `Stamina ${state.stamina}/${state.maxStamina}; waiting for regeneration`,
     };
   }
 
@@ -335,17 +340,13 @@ class StrategyEngine {
    * @returns {boolean}
    */
   _hasStamina(state) {
-    const reserve = state.progression?.ignoreSoftStaminaRules === true
-      ? 0
-      : (this.config.combat?.staminaReserve || 0);
+    const reserve = staminaMinimumAmount(this.config, state);
     return (state.stamina || 0) > reserve;
   }
 
   _canAffordSkill(state, skill) {
     if (!skill) return false;
-    const reserve = state.progression?.ignoreSoftStaminaRules === true
-      ? 0
-      : (this.config.combat?.staminaReserve || 0);
+    const reserve = staminaMinimumAmount(this.config, state);
     if ((state.stamina || 0) < reserve + Math.max(0, skill?.stamCost || 0)) return false;
     const manaReserve = Math.max(0, Number(this.config.resources?.mana?.keepMin) || 0);
     if ((state.mana || 0) < manaReserve + Math.max(0, Number(skill.manaCost) || 0)) return false;
@@ -394,6 +395,21 @@ class StrategyEngine {
     if (staminaPolicy.allowPotions !== true) return false;
     const scan = this._scanParams(state);
     if (!scan) return false;
+    if (scan.kind === 'boss_hunt') {
+      for (const entries of Object.values(this.config.bossHunt?.targets || {})) {
+        for (const target of Object.values(entries || {})) {
+          const type = target?.staminaPotion;
+          if (!['auto', 'small', 'large', 'full', 'adventure'].includes(type)) continue;
+          if (target.enabled !== true || Number(target.targetDamage) <= 0) continue;
+          if (target.unlimited !== true && Number(target.completedCount) >= Number(target.killCount)) continue;
+          if (type === 'auto') {
+            if (!['small', 'large', 'full', 'adventure'].some(candidate => Number(staminaPolicy.potionLimits?.[candidate]) > 0)) continue;
+          } else if (Number(staminaPolicy.potionLimits?.[type]) <= 0) continue;
+          return true;
+        }
+      }
+      return false;
+    }
     const areaKeys = [scan.areaKey, scan.fallback?.areaKey].filter(Boolean);
     for (const areaKey of areaKeys) {
       const targets = Object.values(this.config.monsters?.maps?.[areaKey] || {});

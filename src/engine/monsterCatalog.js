@@ -11,7 +11,7 @@ const MONSTER_AREAS = Object.freeze([
   { key: 'olympus_athena', label: 'Olympus Athena', type: 'gate', gateId: 5, wave: 15 },
   { key: 'olympus_hera', label: 'Olympus Hera', type: 'gate', gateId: 5, wave: 16 },
   { key: 'olympus_zeus', label: 'Olympus Zeus', type: 'gate', gateId: 5, wave: 17 },
-  { key: 'event_black_crown_ascends', label: 'The Black Crown Ascends', type: 'event', eventId: 11, wave: 115 },
+  { key: 'event_black_crown_ascends', label: 'The Black Crown Ascends', type: 'event', eventId: 11, wave: 115, retired: true },
   { key: 'castle_fallen_prince', label: 'Castle of the Fallen Prince', type: 'dungeon' },
   { key: 'shadowbridge_warrens', label: 'Shadowbridge Warrens', type: 'dungeon' },
   { key: 'polyhedral_crucible', label: 'The Polyhedral Crucible', type: 'dungeon' },
@@ -31,9 +31,9 @@ function configureMonsterAreas(areaCatalog = {}) {
 function listMonsterAreas(options = {}) {
   const includeHidden = options?.includeHidden === true;
   const areas = [...MONSTER_AREAS.map(area => ({ ...area, custom: false })), ...customMonsterAreas]
-    .map(area => ({ ...area, hidden: hiddenMonsterAreaKeys.has(area.key) }));
+    .map(area => ({ ...area, hidden: area.retired === true || hiddenMonsterAreaKeys.has(area.key) }));
   if (includeHidden) return areas;
-  return areas.filter(area => !area.hidden).map(({ hidden, custom, ...area }) => area);
+  return areas.filter(area => !area.hidden).map(({ hidden, custom, retired, ...area }) => area);
 }
 
 function getMonsterArea(key) {
@@ -60,7 +60,10 @@ function monsterTypeKey(name) {
 function selectGateMonster(monsters, configuredTypes, nowEpoch = Math.floor(Date.now() / 1000), options = {}) {
   const candidates = [];
   for (const monster of Array.isArray(monsters) ? monsters : []) {
-    const key = monsterTypeKey(monster.name);
+    const catalogMonsterKey = monsterTypeKey(monster.name);
+    const key = typeof options.targetKeyResolver === 'function'
+      ? String(options.targetKeyResolver(monster) || '')
+      : catalogMonsterKey;
     const settings = configuredTypes?.[key];
     if (!settings?.enabled) continue;
     const concreteId = String(
@@ -71,15 +74,22 @@ function selectGateMonster(monsters, configuredTypes, nowEpoch = Math.floor(Date
       || '',
     );
     if (concreteId && (settings.completedInstanceIds || []).map(String).includes(concreteId)) continue;
+    const dungeonInstanceId = String(monster.instanceId || monster.battleRef?.instanceId || '');
+    const perDungeonLimit = Math.max(0, Math.trunc(Number(settings.dungeonKillCount) || 0));
+    const perDungeonCompleted = Math.max(0, Math.trunc(Number(settings.completedByDungeon?.[dungeonInstanceId]) || 0));
     if (!Number.isFinite(Number(monster.hp))) continue;
     if (monster.attackable === false) continue;
-    if (settings.unlimited !== true && (settings.killCount || 0) <= (settings.completedCount || 0)) continue;
+    if (settings.unlimited !== true) {
+      if (dungeonInstanceId && perDungeonLimit > 0) {
+        if (perDungeonCompleted >= perDungeonLimit) continue;
+      } else if ((settings.killCount || 0) <= (settings.completedCount || 0)) continue;
+    }
     if ((settings.targetDamage || 0) <= 0 || (monster.userDmg || 0) >= settings.targetDamage) continue;
     if ((monster.hp ?? 0) < (settings.minimumHp || 0)) continue;
     if (monster.dead || monster.hp === 0) continue;
     if (monster.expire && monster.expire <= nowEpoch) continue;
     if (monster.capNotReached === false) continue;
-    candidates.push({ ...monster, monsterKey: key, targetSettings: { ...settings } });
+    candidates.push({ ...monster, catalogMonsterKey, monsterKey: key, targetSettings: { ...settings } });
   }
 
   candidates.sort((left, right) =>

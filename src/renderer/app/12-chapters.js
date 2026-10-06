@@ -213,7 +213,8 @@ if (window.botAPI.onEnergyProgress) {
     if (progress.type === 'start') {
       appendFarmTerminal('info', `[${progress.current}/${progress.total}] Farming chapter ${progress.chapter}...`);
     } else if (progress.type === 'success') {
-      appendFarmTerminal('success', `[${progress.current}/${progress.total}] Chapter ${progress.chapter} updated.`);
+      const reward = Number(progress.staminaGained) > 0 ? ` · +${progress.staminaGained} ST` : ' · no new Stamina';
+      appendFarmTerminal('success', `[${progress.current}/${progress.total}] Chapter ${progress.chapter}: ${progress.message || 'accepted'}${reward}`);
     } else if (progress.type === 'error') {
       appendFarmTerminal('error', `[${progress.current}/${progress.total}] Chapter ${progress.chapter}: ${progress.message || 'failed'}`);
     }
@@ -224,6 +225,7 @@ if (window.botAPI.onEnergyProgress) {
 function shouldStopFarming() {
   const currentStamina = (latestStats && latestStats.stamina && latestStats.stamina.current) !== undefined ? latestStats.stamina.current : 0;
   const maxStamina = (latestStats && latestStats.stamina && latestStats.stamina.max) || (latestStats && latestStats.totalStamina) || 0;
+  const farmedEnergy = Math.max(0, Number(latestStats?.farmedEnergy) || 0);
 
   // 1. Safety: Stop if Max Stamina reached
   if (chkStopMaxStamina?.checked && maxStamina > 0 && currentStamina >= maxStamina) {
@@ -232,8 +234,8 @@ function shouldStopFarming() {
 
   // 2. Safety: Max Stamina Farm target threshold
   const maxFarmTarget = parseInt(inputMaxStaminaFarm?.value, 10);
-  if (!isNaN(maxFarmTarget) && maxFarmTarget > 0 && currentStamina >= maxFarmTarget) {
-    return { stop: true, reason: `Current stamina (${currentStamina}) reached the Max Stamina Farm threshold (${maxFarmTarget}).` };
+  if (!isNaN(maxFarmTarget) && maxFarmTarget > 0 && farmedEnergy >= maxFarmTarget) {
+    return { stop: true, reason: `Chapter reward progress (${farmedEnergy}) reached the farming threshold (${maxFarmTarget}).` };
   }
 
   // 3. Safety: Stop when hourly stamina is in [X] min

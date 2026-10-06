@@ -17,6 +17,7 @@ let lootingConfig = { maps: {} };
 let autoFarmConfig = { maps: {}, settings: {} };
 let adventureQuestConfig = { quests: {} };
 let battlePassConfig = { enabled: false, areaKey: 'grakthar_3', lootIfAchievable: false, safeCheck: false, targets: {} };
+let bossHuntConfig = { targets: {} };
 let progressionProfilesConfig = { activeId: 'default', profiles: {} };
 let latestAdventureQuestState = null;
 let latestBattlePassState = null;
@@ -230,6 +231,7 @@ function resetAccountScopedRendererState() {
   autoFarmConfig = { maps: {}, settings: {} };
   adventureQuestConfig = { quests: {} };
   battlePassConfig = { enabled: false, areaKey: 'grakthar_3', lootIfAchievable: false, safeCheck: false, targets: {} };
+  bossHuntConfig = { targets: {} };
   progressionProfilesConfig = { activeId: 'default', profiles: {} };
   latestAdventureQuestState = null;
   latestBattlePassState = null;
@@ -258,7 +260,7 @@ function resetAccountScopedRendererState() {
   runtimeDryRun = true;
   updateAutoFarmEligibility(null);
   renderBotModeState();
-  for (const container of [monsterAreaContent, lootAreaContent, targetHistoryContent, lootHistoryContent,
+  for (const container of [monsterAreaContent, bossHuntContent, lootAreaContent, targetHistoryContent, lootHistoryContent,
     progressionHistoryContent, autoFarmTargetContent, autoFarmServerTargetsContent]) {
     container?.replaceChildren();
   }

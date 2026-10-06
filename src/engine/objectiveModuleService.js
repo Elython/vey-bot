@@ -42,13 +42,10 @@ function normalizedQuestText(value) {
 
 function questPolicyFor(quest, config = {}) {
   const direct = quest?.id ? config.adventureQuests?.quests?.[String(quest.id)] : null;
-  if (direct) return direct;
-  const title = normalizedQuestText(quest?.title);
-  const remembered = Object.values(config.adventureQuests?.quests || {})
-    .find(policy => normalizedQuestText(policy?.matchTitle) === title);
-  if (remembered) return remembered;
-  return Object.values(config.adventureQuests?.drafts || {})
-    .find(policy => normalizedQuestText(policy?.matchTitle) === title) || null;
+  // Quest IDs are stable across accounts. The authenticated board is the
+  // authority; title/draft fallbacks could attach another account's imported
+  // policy to a different quest and must not participate in automation.
+  return direct || null;
 }
 
 function objectiveScan(policy, metadata = {}) {
@@ -247,7 +244,7 @@ function projectBattlePassState(page, config = {}) {
   };
   const stamina = page.objectives.find(objective => objectiveRole(objective) === 'spend_stamina') || null;
   const hunt = page.objectives.find(objective => objectiveRole(objective) === 'monster_hunt') || null;
-  const complete = Boolean(stamina?.completed && hunt?.completed);
+  const complete = page.completed === true || Boolean(stamina?.completed && hunt?.completed);
   const policy = config.battlePass || {};
   const preferredTargets = Object.entries(policy.targets?.[policy.areaKey] || {})
     .map(([monsterKey, target]) => ({ monsterKey, ...target }))
