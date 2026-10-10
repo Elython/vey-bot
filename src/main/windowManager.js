@@ -32,7 +32,12 @@ function normalizeBattleUrl(rawUrl) {
   if (typeof rawUrl !== 'string' || rawUrl.length === 0 || rawUrl.length > 300) return null;
   try {
     const url = new URL(rawUrl, GAME_ORIGIN);
-    if (url.origin !== new URL(GAME_ORIGIN).origin || url.pathname !== '/battle.php' || url.hash) return null;
+    if (url.origin !== new URL(GAME_ORIGIN).origin || url.hash) return null;
+    if (url.pathname === '/pvp_battle.php') {
+      const matchId = url.searchParams.get('match_id');
+      return /^\d{1,16}$/.test(String(matchId || '')) ? GAME_ORIGIN + 'pvp_battle.php?match_id=' + encodeURIComponent(matchId) : null;
+    }
+    if (url.pathname !== '/battle.php') return null;
     const id = url.searchParams.get('id');
     const dgmid = url.searchParams.get('dgmid');
     const instanceId = url.searchParams.get('instance_id');

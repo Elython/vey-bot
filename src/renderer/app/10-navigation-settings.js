@@ -1,5 +1,72 @@
+// Sidebar visibility is a local UI preference, independent of game configuration.
+const menuSidebarBtn = document.getElementById('menuSidebarBtn');
+const modalSidebar = document.getElementById('modalSidebar');
+const sidebarVisibilityList = document.getElementById('sidebarVisibilityList');
+const btnCloseSidebar = document.getElementById('btnCloseSidebar');
+const btnResetSidebar = document.getElementById('btnResetSidebar');
+let hiddenSidebarTabs = new Set();
+const unavailableSidebarTabs = new Set();
+try {
+  const saved = JSON.parse(localStorage.getItem('veybot:sidebar:hidden:v1') || '[]');
+  if (Array.isArray(saved)) hiddenSidebarTabs = new Set(saved.filter(tab => typeof tab === 'string' && tab !== 'home'));
+} catch {
+  // An old or malformed local preference must never block navigation.
+}
+
+function applySidebarVisibility() {
+  for (const button of tabContainer.querySelectorAll('.tab-btn[data-tab]')) {
+    button.toggleAttribute('data-sidebar-hidden', hiddenSidebarTabs.has(button.dataset.tab)||unavailableSidebarTabs.has(button.dataset.tab));
+  }
+  if (hiddenSidebarTabs.has(currentTab)) window.switchTab('home');
+}
+
+function renderSidebarVisibility() {
+  sidebarVisibilityList.replaceChildren();
+  for (const button of tabContainer.querySelectorAll('.tab-btn[data-tab]')) {
+    if(unavailableSidebarTabs.has(button.dataset.tab))continue;
+    const row = document.createElement('label');
+    row.className = 'form-tree-row';
+    const name = document.createElement('span');
+    name.className = 'form-tree-label';
+    name.textContent = button.textContent.trim();
+    const control = document.createElement('span');
+    control.className = 'form-tree-control';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'tree-checkbox';
+    checkbox.checked = !hiddenSidebarTabs.has(button.dataset.tab);
+    checkbox.disabled = button.dataset.tab === 'home';
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) hiddenSidebarTabs.delete(button.dataset.tab);
+      else hiddenSidebarTabs.add(button.dataset.tab);
+      localStorage.setItem('veybot:sidebar:hidden:v1', JSON.stringify([...hiddenSidebarTabs]));
+      applySidebarVisibility();
+    });
+    control.append(checkbox);
+    row.append(name, control);
+    sidebarVisibilityList.append(row);
+  }
+}
+
+menuSidebarBtn.addEventListener('click', () => {
+  gearDropdown.classList.remove('show');
+  renderSidebarVisibility();
+  modalSidebar.style.display = 'flex';
+});
+btnCloseSidebar.addEventListener('click', () => { modalSidebar.style.display = 'none'; });
+modalSidebar.addEventListener('click', event => {
+  if (event.target === modalSidebar) modalSidebar.style.display = 'none';
+});
+btnResetSidebar.addEventListener('click', () => {
+  hiddenSidebarTabs.clear();
+  localStorage.removeItem('veybot:sidebar:hidden:v1');
+  applySidebarVisibility();
+  renderSidebarVisibility();
+});
+
 // Tab Switching
 window.switchTab = function (tab) {
+  if (hiddenSidebarTabs.has(tab)||unavailableSidebarTabs.has(tab)) tab = 'home';
   if (tab === 'autoFarm' && !autoFarmEligibility.eligible) {
     const message = autoFarmEligibility.known
       ? `Auto Farm requires Level 400 (current Level: ${autoFarmEligibility.level}).`
@@ -8,6 +75,8 @@ window.switchTab = function (tab) {
     return;
   }
   currentTab = tab;
+  runEl('tabCustomRunsBtn').classList.toggle('active',tab==='customRuns');
+  runEl('viewCustomRuns').style.display=tab==='customRuns'?'flex':'none';
   tabHomeBtn.classList.toggle('active', tab === 'home');
   tabBotSetupBtn.classList.toggle('active', tab === 'botSetup');
   tabAutoFarmBtn?.classList.toggle('active', tab === 'autoFarm');
@@ -67,6 +136,7 @@ window.switchTab = function (tab) {
 document.querySelectorAll('[data-tab]').forEach(button => {
   button.addEventListener('click', () => window.switchTab(button.dataset.tab));
 });
+applySidebarVisibility();
 
 // Energy Farm Subtab Switching
 window.switchEnergySubTab = function (subtab) {
@@ -105,26 +175,26 @@ document.querySelectorAll('[data-console-tab]').forEach(button => {
 
 async function refreshUserLogs() {
   if (userLogsText) {
-    userLogsText.textContent = 'Loading user logs...';
+    userLogsText.textContent = uiText('Loading user logs...');
     try {
       const logs = await window.botAPI.getUserLogs();
-      userLogsText.textContent = logs ? boundedDeveloperLogText(logs) : 'No user logs found.';
+      userLogsText.textContent = logs ? boundedDeveloperLogText(logs) : uiText('No user logs found.');
       userLogsText.scrollTop = userLogsText.scrollHeight;
     } catch (e) {
-      userLogsText.textContent = `Error loading user logs: ${e.message}`;
+      userLogsText.textContent = uiText("Error loading user logs: {0}", e.message);
     }
   }
 }
 
 async function refreshServerLogs() {
   if (serverLogsText) {
-    serverLogsText.textContent = 'Loading client logs...';
+    serverLogsText.textContent = uiText('Loading client logs...');
     try {
       const logs = (window.botAPI.getClientLogs ? await window.botAPI.getClientLogs() : await window.botAPI.getAutoLogs());
-      serverLogsText.textContent = logs ? boundedDeveloperLogText(logs) : 'No client logs found.';
+      serverLogsText.textContent = logs ? boundedDeveloperLogText(logs) : uiText('No client logs found.');
       serverLogsText.scrollTop = serverLogsText.scrollHeight;
     } catch (e) {
-      serverLogsText.textContent = `Error loading client logs: ${e.message}`;
+      serverLogsText.textContent = uiText("Error loading client logs: {0}", e.message);
     }
   }
 }
@@ -144,7 +214,7 @@ if (btnRefreshServerLogs) {
 
 async function applyAreaCatalogChange(nextCatalog) {
   const result = await updateCanonicalConfig({ areaCatalog: nextCatalog });
-  if (!result?.success) throw new Error(result?.error || 'Could not update Gates catalog');
+  if (!result?.success) throw new Error(result?.error || uiText('Could not update Gates catalog'));
   areaCatalogConfig = result.config?.areaCatalog || nextCatalog;
   monsterAreaCache.clear();
   lootAreaCache.clear();
@@ -196,21 +266,21 @@ menuRefreshMonsterCatalogBtn?.addEventListener('click', async () => {
 
 async function renderGatesManager() {
   if (!gatesManagerContent) return;
-  gatesManagerContent.innerHTML = '<div class="empty-state">Loading Gates…</div>';
+  gatesManagerContent.innerHTML = ("<div class=\"empty-state\">" + uiText("Loading Gates…") + "</div>");
   const areas = await refreshMonsterCatalog(true);
   const table = document.createElement('div'); table.className = 'gates-manager-table';
   const header = document.createElement('div'); header.className = 'gates-manager-row gates-manager-header';
-  for (const label of ['Name', 'Type', 'ID', 'Wave', 'Status', 'Action']) { const cell = document.createElement('span'); cell.textContent = label; header.append(cell); }
+  for (const label of [uiText('Name'), uiText('Type'), uiText('ID'), uiText('Wave'), uiText('Status'), uiText('Action')]) { const cell = document.createElement('span'); cell.textContent = label; header.append(cell); }
   table.append(header);
   for (const area of areas.filter(entry => ['gate', 'event'].includes(entry.type))) {
     const row = document.createElement('div'); row.className = 'gates-manager-row';
     const name = document.createElement('span'); name.textContent = area.label; name.title = area.key;
-    const type = document.createElement('span'); type.textContent = area.type === 'event' ? 'Event' : 'Gate';
+    const type = document.createElement('span'); type.textContent = area.type === 'event' ? uiText('Event') : uiText('Gate');
     const id = document.createElement('span'); id.textContent = String(area.eventId || area.gateId || '—');
     const wave = document.createElement('span'); wave.textContent = String(area.wave || '—');
-    const status = document.createElement('span'); status.textContent = area.hidden ? 'Hidden' : area.custom ? 'Custom' : 'Built-in';
+    const status = document.createElement('span'); status.textContent = area.hidden ? uiText('Hidden') : area.custom ? uiText('Custom') : uiText('Built-in');
     const action = document.createElement('button'); action.type = 'button'; action.className = 'btn btn-sm';
-    action.textContent = area.custom ? 'Delete' : area.hidden ? 'Show' : 'Hide';
+    action.textContent = area.custom ? uiText('Delete') : area.hidden ? uiText('Show') : uiText('Hide');
     action.addEventListener('click', async () => {
       action.disabled = true;
       try {
@@ -294,24 +364,24 @@ btnConfirmClearHistory?.addEventListener('click', async () => {
   if (chkClearAttackHistory?.checked) kinds.push('target');
   if (chkClearLootHistory?.checked) kinds.push('loot');
   if (kinds.length === 0) {
-    setWorkspaceStatus(clearHistoryStatus, 'Select at least one history type.', 'error');
+    setWorkspaceStatus(clearHistoryStatus, uiText('Select at least one history type.'), 'error');
     return;
   }
   let before = null;
   if (radioClearHistoryBefore?.checked) {
     if (!inputClearHistoryBefore?.value) {
-      setWorkspaceStatus(clearHistoryStatus, 'Choose a cutoff date.', 'error');
+      setWorkspaceStatus(clearHistoryStatus, uiText('Choose a cutoff date.'), 'error');
       return;
     }
     before = new Date(`${inputClearHistoryBefore.value}T00:00:00`).toISOString();
   }
   btnConfirmClearHistory.disabled = true;
-  setWorkspaceStatus(clearHistoryStatus, 'Clearing…');
+  setWorkspaceStatus(clearHistoryStatus, uiText('Clearing…'));
   try {
     const result = await window.botAPI.clearActivityHistory(kinds, before);
-    if (!result?.success) throw new Error(result?.error || 'History could not be cleared');
+    if (!result?.success) throw new Error(result?.error || uiText('History could not be cleared'));
     const removed = Number(result.removed?.target || 0) + Number(result.removed?.loot || 0);
-    setWorkspaceStatus(clearHistoryStatus, `${removed} saved action${removed === 1 ? '' : 's'} removed.`, 'success');
+    setWorkspaceStatus(clearHistoryStatus, uiText("{0} saved action{1} removed.", removed, removed === 1 ? '' : 's'), 'success');
     if (kinds.includes('target')) await refreshTargetHistory();
     if (kinds.includes('loot')) await refreshProgressionHistory();
   } catch (error) {
@@ -356,7 +426,7 @@ menuPurgeBtn?.addEventListener('click', () => {
   gearDropdown.classList.remove('show');
   if (!activeAccount || !modalPurge) return;
   if (purgeAccountName) purgeAccountName.textContent = activeAccount;
-  setWorkspaceStatus(purgeStatus, 'The confirmation unlocks after 5 seconds.');
+  setWorkspaceStatus(purgeStatus, uiText('The confirmation unlocks after 5 seconds.'));
   modalPurge.style.display = 'flex';
   startPurgeCountdown();
 });
@@ -370,7 +440,7 @@ btnConfirmPurge?.addEventListener('click', async () => {
   if (btnClosePurge) btnClosePurge.disabled = true;
   if (btnCancelPurge) btnCancelPurge.disabled = true;
   setButtonIcon(btnConfirmPurge, 'loader-circle', 'Purging…');
-  setWorkspaceStatus(purgeStatus, 'Removing all account-specific data from this device…');
+  setWorkspaceStatus(purgeStatus, uiText('Removing all account-specific data from this device…'));
   let result;
   try {
     await flushPendingConfigSaves();
@@ -382,7 +452,7 @@ btnConfirmPurge?.addEventListener('click', async () => {
   if (btnCancelPurge) btnCancelPurge.disabled = false;
   closePurgeModal();
   await performLogout({ skipServer: true });
-  if (!result?.success) alert(result?.error || 'Account purge was incomplete.');
+  if (!result?.success) alert(result?.error || uiText('Account purge was incomplete.'));
 });
 
 // Gear Dropdown Toggle

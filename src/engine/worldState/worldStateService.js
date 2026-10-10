@@ -17,6 +17,7 @@ const MAP_DOMAIN_PATHS = Object.freeze({
   [WorldDomain.ADVENTURE_QUESTS]: ['objectives', 'adventureQuests'],
   [WorldDomain.CUBE]: ['cube'],
   [WorldDomain.LOADOUT]: ['loadout'],
+  [WorldDomain.SOLO_PVP]: ['soloPvp'],
 });
 
 const SINGLETON_DOMAIN_PATHS = Object.freeze({

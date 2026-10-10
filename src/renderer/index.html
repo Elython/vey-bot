@@ -18,16 +18,17 @@
       <div class="tabs" id="tabContainer" style="display: none;">
         <button class="tab-btn active" id="tabHomeBtn" data-tab="home">Overview</button>
         <button class="tab-btn" id="tabBotSetupBtn" data-tab="botSetup">Bot Setup</button>
-        <button class="tab-btn" id="tabAutoFarmBtn" data-tab="autoFarm">Auto Farm</button>
         <button class="tab-btn" id="tabCombatBtn" data-tab="combat">Combat</button>
         <button class="tab-btn" id="tabEnergyFarmBtn" data-tab="energyFarm">Progression</button>
+        <button class="tab-btn" id="tabCustomRunsBtn" data-tab="customRuns">Custom Runs</button>
+        <button class="tab-btn" id="tabAutoFarmBtn" data-tab="autoFarm">Auto Farm</button>
         <button class="tab-btn" id="tabBattlePassBtn" data-tab="battlePass">Battle Pass</button>
         <button class="tab-btn" id="tabAdventureQuestsBtn" data-tab="adventureQuests">Adv Quests</button>
         <button class="tab-btn" id="tabBossHuntBtn" data-tab="bossHunt">Boss Hunt</button>
         <button class="tab-btn" id="tabNPCConfigBtn" data-tab="npcConfig">Targets</button>
         <button class="tab-btn" id="tabLootConfigBtn" data-tab="lootConfig">Looting</button>
         <button class="tab-btn" id="tabStatisticsBtn" data-tab="statistics">Statistics</button>
-        <button class="tab-btn" id="tabConsoleBtn" data-tab="console" style="display: none;">Logs</button>
+        <button class="tab-btn" id="tabConsoleBtn" data-tab="console">Logs</button>
       </div>
       <div class="app-title-unauth" id="unauthTitle">Veybot</div>
 
@@ -44,28 +45,38 @@
         <div class="gear-container">
           <button class="gear-btn" id="gearBtn" title="Settings"><i data-lucide="settings"></i></button>
           <div class="gear-dropdown" id="gearDropdown">
-            <label class="menu-item menu-checkbox">
-              <input type="checkbox" id="chkDevMode"> Developer mode
-            </label>
+            <div class="menu-section-title">Bot</div>
+            <button id="menuViewBrowserBtn" class="menu-item" disabled><i data-lucide="globe"></i> View in
+              Browser</button>
+            <button id="menuPauseResumeBtn" class="menu-item" disabled><i data-lucide="pause"></i> Pause Bot</button>
             <hr class="menu-divider">
+            <div class="menu-section-title">Configuration</div>
             <button id="btnLoadConfig" class="menu-item" type="button"><i data-lucide="folder-open"></i> Load
               config</button>
             <button id="btnSaveConfig" class="menu-item" type="button"><i data-lucide="save"></i> Save config</button>
+            <button id="menuGatesBtn" class="menu-item" type="button"><i data-lucide="map"></i> Gates</button>
+            <hr class="menu-divider">
+            <div class="menu-section-title">Appearance</div>
+            <label class="menu-language-row" for="selectInterfaceLanguage">
+              <span>Language</span>
+              <select id="selectInterfaceLanguage" class="tree-select" aria-label="Interface language" title="Game names, descriptions, server messages, and diagnostic logs stay in English.">
+                <option value="en">English</option><option value="de">Deutsch</option><option value="fr">Français</option>
+              </select>
+            </label>
+            <button id="menuSidebarBtn" class="menu-item" type="button"><i data-lucide="panel-left"></i> Sidebar items</button>
+            <hr class="menu-divider">
+            <div class="menu-section-title">Data & history</div>
             <button id="btnExportAccountData" class="menu-item" type="button"><i data-lucide="archive"></i> Export account data</button>
             <button id="btnRestoreAccountData" class="menu-item" type="button"><i data-lucide="archive-restore"></i> Restore account data</button>
-            <button id="menuGatesBtn" class="menu-item" type="button"><i data-lucide="map"></i> Gates</button>
             <button id="menuRefreshMonsterCatalogBtn" class="menu-item" type="button"><i data-lucide="database-zap"></i> Refresh monster catalog</button>
             <button id="menuClearHistoryBtn" class="menu-item" type="button"><i data-lucide="history"></i> Clear
               History</button>
             <button id="menuPurgeBtn" class="menu-item menu-item-danger" type="button" disabled><i
                 data-lucide="shield-alert"></i> Purge</button>
             <hr class="menu-divider">
-            <button id="menuViewBrowserBtn" class="menu-item" disabled><i data-lucide="globe"></i> View in
-              Browser</button>
-            <button id="menuPauseResumeBtn" class="menu-item" disabled><i data-lucide="pause"></i> Pause Bot</button>
-            <button id="menuAddAccountBtn" class="menu-item"><i data-lucide="user-plus"></i> Add New Account</button>
+            <div class="menu-section-title">Accounts</div>
             <button id="menuSavedAccountsBtn" class="menu-item"><i data-lucide="users"></i> Saved Accounts</button>
-            <hr class="menu-divider">
+            <button id="menuAddAccountBtn" class="menu-item"><i data-lucide="user-plus"></i> Add New Account</button>
             <button id="menuLogoutBtn" class="menu-item" disabled><i data-lucide="log-out"></i> Logout</button>
           </div>
         </div>
@@ -140,6 +151,9 @@
             <span class="overview-current-label">Current operation</span>
             <strong id="overviewTargetName">Nothing running</strong>
             <span id="overviewRuntimeBadge" class="runtime-status-badge is-stopped">Stopped</span>
+          </div>
+          <div id="overviewCustomRun" class="overview-custom-run" style="display:none" aria-live="polite">
+            <i data-lucide="route" aria-hidden="true"></i><strong id="overviewRunName"></strong><span id="overviewRunStep" class="overview-run-step"></span><span id="overviewRunDetail"></span>
           </div>
           <div class="overview-current-reason" id="overviewActionReason">Choose a module and press Start.</div>
           <div class="overview-progress-row">
@@ -247,6 +261,7 @@
                   <option value="dungeons">Dungeons</option>
                   <option value="event">Event</option>
                   <option value="boss_hunt">Boss Hunt</option>
+                  <option value="custom_runs">Custom Run</option>
                   <option value="auto_farm">Auto Farm</option>
                   <option value="battle_pass">Battle Pass</option>
                   <option value="adventure_quests">Adv Quests</option>
@@ -256,10 +271,7 @@
                     data-lucide="circle-help"></i></button></div>
             </div>
             <div class="form-tree-row">
-              <label class="form-tree-label" for="selectProgressionProfileSetup">Progression config</label>
-              <div class="form-tree-control"><select id="selectProgressionProfileSetup" class="tree-select">
-                  <option value="default">Default</option>
-                </select></div>
+              <label class="form-tree-label" for="selectSetupCustomRun">Custom Run config</label><div class="form-tree-control"><select id="selectSetupCustomRun" class="tree-select" title="Used only by the Custom Run module"></select></div>
             </div>
             <div class="form-tree-row" id="rowGeneralMap">
               <label class="form-tree-label" for="selectGeneralMap">Gate</label>
@@ -278,6 +290,18 @@
             <div class="form-tree-row" id="rowGeneralEventMap">
               <label class="form-tree-label" for="selectGeneralEventMap">Event</label>
               <div class="form-tree-control"><select id="selectGeneralEventMap" class="tree-select"></select></div>
+            </div>
+            <div class="form-tree-row">
+              <label class="form-tree-label" for="selectProgressionProfileSetup">Progression config</label>
+              <div class="form-tree-control"><select id="selectProgressionProfileSetup" class="tree-select">
+                  <option value="default">Default</option>
+                </select></div>
+            </div>
+            <div class="form-tree-row">
+              <label class="form-tree-label" for="selectCombatProfileSetup">Combat config</label>
+              <div class="form-tree-control"><select id="selectCombatProfileSetup" class="tree-select">
+                  <option value="default">Default</option>
+                </select></div>
             </div>
             <div class="tree-section" id="sectionGeneralStamina">
               <div class="tree-section-header" data-tree-section="sectionGeneralStamina">
@@ -310,7 +334,7 @@
                       class="tree-input-sm" min="0" max="100"><span class="unit-label">%</span></div>
                 </div>
                 <div class="form-tree-row"><label class="form-tree-label" for="inputMaxDeaths">Max Deaths</label>
-                  <div class="form-tree-control resource-counter"><span id="healthDeathsUsed" class="potion-count-used">0 deaths</span><input id="inputMaxDeaths" type="number" class="tree-input-sm" min="0" title="0 means unlimited"><span class="unit-label">0 = ∞</span>
+                  <div class="form-tree-control resource-counter"><span id="healthDeathsUsed" class="potion-count-used">0 deaths</span><button type="button" class="btn btn-secondary btn-sm workspace-icon-btn" data-reset-usage="deaths" title="Reset this used counter (pause the bot first)" aria-label="Reset deaths"><i data-lucide="rotate-ccw"></i></button><input id="inputMaxDeaths" type="number" class="tree-input-sm" min="0" title="0 means unlimited"><span class="unit-label">0 = ∞</span>
                   </div>
                 </div>
                 <div class="form-tree-row"><label class="form-tree-label" for="chkUseHealingPotions">Use Healing
@@ -319,7 +343,7 @@
                   </div>
                 </div>
                 <div id="rowHealingPotionLimit" class="form-tree-row resource-child-row"><label class="form-tree-label" for="inputMaxHealingPotions">Healing potions limit</label>
-                  <div class="form-tree-control"><span class="potion-limit-status"><span id="healthPotsUsed" class="potion-count-used">0 used</span><span id="healthPotsAvailable" class="potion-count-available">0 left</span></span><input id="inputMaxHealingPotions" type="number" class="tree-input-sm" min="0"></div>
+                  <div class="form-tree-control"><span class="potion-limit-status"><span id="healthPotsUsed" class="potion-count-used">0 used</span><button type="button" class="btn btn-secondary btn-sm workspace-icon-btn" data-reset-usage="healthPotionsUsed" title="Reset this used counter (pause the bot first)" aria-label="Reset healthPotionsUsed"><i data-lucide="rotate-ccw"></i></button><span id="healthPotsAvailable" class="potion-count-available">0 left</span></span><input id="inputMaxHealingPotions" type="number" class="tree-input-sm" min="0"></div>
                 </div>
                 <div class="form-tree-row"><label class="form-tree-label" for="chkBuyHealthPotion">Buy Health pot if
                     needed (30k gold)</label>
@@ -359,12 +383,12 @@
                 </div>
                 <div id="rowSmallManaPotLimit" class="form-tree-row resource-child-row"><label class="form-tree-label"
                     for="inputSmallManaPotLimit">Small pots limit</label>
-                  <div class="form-tree-control"><span class="potion-limit-status"><span id="smallManaPotsUsed" class="potion-count-used">0 used</span><span id="smallManaPotsAvailable" class="potion-count-available">0 left</span></span><input id="inputSmallManaPotLimit" type="number" class="tree-input-sm"
+                  <div class="form-tree-control"><span class="potion-limit-status"><span id="smallManaPotsUsed" class="potion-count-used">0 used</span><button type="button" class="btn btn-secondary btn-sm workspace-icon-btn" data-reset-usage="manaPotionsUsed.small" title="Reset this used counter (pause the bot first)" aria-label="Reset manaPotionsUsed.small"><i data-lucide="rotate-ccw"></i></button><span id="smallManaPotsAvailable" class="potion-count-available">0 left</span></span><input id="inputSmallManaPotLimit" type="number" class="tree-input-sm"
                       min="0"></div>
                 </div>
                 <div id="rowLargeManaPotLimit" class="form-tree-row resource-child-row"><label class="form-tree-label"
                     for="inputLargeManaPotLimit">Large pots limit</label>
-                  <div class="form-tree-control"><span class="potion-limit-status"><span id="largeManaPotsUsed" class="potion-count-used">0 used</span><span id="largeManaPotsAvailable" class="potion-count-available">0 left</span></span><input id="inputLargeManaPotLimit" type="number" class="tree-input-sm"
+                  <div class="form-tree-control"><span class="potion-limit-status"><span id="largeManaPotsUsed" class="potion-count-used">0 used</span><button type="button" class="btn btn-secondary btn-sm workspace-icon-btn" data-reset-usage="manaPotionsUsed.large" title="Reset this used counter (pause the bot first)" aria-label="Reset manaPotionsUsed.large"><i data-lucide="rotate-ccw"></i></button><span id="largeManaPotsAvailable" class="potion-count-available">0 left</span></span><input id="inputLargeManaPotLimit" type="number" class="tree-input-sm"
                       min="0"></div>
                 </div>
                 <div class="form-tree-row"><label class="form-tree-label">Keep mana in range</label>
@@ -392,8 +416,21 @@
           </div>
           <div class="page-info-footer"><button id="btnBotSetupPageInfo" class="btn btn-secondary btn-sm" type="button"><i data-lucide="circle-help"></i> Info</button></div>
         </div>
-        <div id="subviewHomeEquipment" class="subview-panel home-config-panel" style="display: none;">
-          <div id="combatPvePanel">
+        <div id="subviewHomeEquipment" class="subview-panel combat-workspace" style="display: none;">
+          <div class="subtabs-bar"><button id="btnCombatGeneralTab" class="subtab-btn active" type="button">General</button><button id="btnCombatCrystalsTab" class="subtab-btn" type="button">Power Crystals</button></div>
+          <div id="combatPvePanel" class="home-config-panel combat-workspace-panel">
+          <div class="progression-profile-manager" aria-label="Combat profile manager">
+            <label for="selectCombatProfile">Combat config</label>
+            <select id="selectCombatProfile" class="tree-select"><option value="default">Default</option></select>
+            <input id="inputCombatProfileName" class="tree-input-flex" type="text" maxlength="60"
+              placeholder="Profile name" aria-label="Combat profile name">
+            <button id="btnCreateCombatProfile" class="btn btn-primary btn-sm workspace-icon-btn" type="button"
+              title="Create a new profile" aria-label="Create a new Combat profile"><i data-lucide="plus"></i></button>
+            <button id="btnRenameCombatProfile" class="btn btn-secondary btn-sm workspace-icon-btn" type="button"
+              title="Rename the selected profile" aria-label="Rename the selected Combat profile"><i data-lucide="pencil"></i></button>
+            <button id="btnDeleteCombatProfile" class="btn btn-danger btn-sm workspace-icon-btn" type="button"
+              title="Delete the selected profile" aria-label="Delete the selected Combat profile"><i data-lucide="trash-2"></i></button>
+          </div>
           <div class="combat-summary-shell" aria-live="polite">
             <button id="btnRefreshAttackStrategy"
               class="btn btn-primary btn-sm workspace-icon-btn combat-summary-refresh" type="button"
@@ -456,7 +493,7 @@
               <div class="form-tree-control"><input id="chkAdaptiveFailSafe" type="checkbox" class="tree-checkbox">
               </div>
             </div>
-            <div class="form-tree-row resource-child-row" id="rowAdaptiveFailSafePercent">
+            <div class="form-tree-row resource-grandchild-row" id="rowAdaptiveFailSafePercent">
               <label class="form-tree-label" for="inputAdaptiveFailSafePercent">Target progress reached</label>
               <div class="form-tree-control input-unit-group"><input id="inputAdaptiveFailSafePercent" type="number"
                   min="0" max="100" class="tree-input-sm"><span class="unit-label">%</span></div>
@@ -488,6 +525,20 @@
               <div class="form-tree-control"><input id="chkAdaptiveNukeAbilities" type="checkbox" class="tree-checkbox">
               </div>
             </div>
+            <div class="form-tree-row" title="Use the selected normal hit while the server reports Artemis has marked you. Class abilities are skipped during the mark.">
+              <label class="form-tree-label" for="chkAvoidArtemisCurse">Avoid Artemis curse</label>
+              <div class="form-tree-control"><input id="chkAvoidArtemisCurse" type="checkbox" class="tree-checkbox"></div>
+            </div>
+            <div class="form-tree-row resource-child-row" id="rowArtemisCurseHit">
+              <label class="form-tree-label" for="selectArtemisCurseHit">Marked hit</label>
+              <div class="form-tree-control"><select id="selectArtemisCurseHit" class="tree-select">
+                <option value="1">x1</option><option value="10">x10</option><option value="50">x50</option><option value="100">x100</option><option value="200">x200</option><option value="1000">x1000</option>
+              </select></div>
+            </div>
+            <div class="form-tree-row">
+              <label class="form-tree-label" for="chkEnableCrystalRouting">Move Crystals with Gear set</label>
+              <div class="form-tree-control"><input id="chkEnableCrystalRouting" class="tree-checkbox" type="checkbox"></div>
+            </div>
             <div class="form-tree-row">
               <label class="form-tree-label" for="selectGearPve">Gear set</label>
               <div class="form-tree-control inline-control-with-button"><select id="selectGearPve" class="tree-select">
@@ -516,6 +567,27 @@
             </div>
           </div>
           <div class="page-info-footer"><button id="btnCombatPageInfo" class="btn btn-secondary btn-sm" type="button"><i data-lucide="circle-help"></i> Info</button></div>
+          </div>
+          <div id="combatCrystalsPanel" class="home-config-panel combat-workspace-panel" style="display:none">
+            <div class="crystal-routing-controls" aria-label="Power Crystal Quick Set routing">
+              <label for="selectCrystalSourceSet">Current Crystal layout belongs to</label>
+              <select id="selectCrystalSourceSet" class="tree-select">
+                <option value="default">Current / Default Gear</option>
+                <option value="quick_set_1">Quick Set 1</option><option value="quick_set_2">Quick Set 2</option>
+                <option value="quick_set_3">Quick Set 3</option><option value="quick_set_4">Quick Set 4</option>
+                <option value="quick_set_5">Quick Set 5</option><option value="quick_set_6">Quick Set 6</option>
+                <option value="quick_set_7">Quick Set 7</option><option value="quick_set_8">Quick Set 8</option>
+                <option value="quick_set_9">Quick Set 9</option><option value="quick_set_10">Quick Set 10</option>
+              </select>
+              <div class="crystal-routing-actions">
+                <button id="btnScanCrystalRouting" type="button" class="btn btn-primary btn-sm" title="Learn which Gear slot each currently linked Crystal follows"><i data-lucide="scan-search"></i> Scan layout</button>
+                <button id="btnRefreshCrystals" type="button" class="btn btn-secondary btn-sm workspace-icon-btn" title="Read crystals and their current links" aria-label="Refresh Power Crystals"><i data-lucide="rotate-cw"></i></button>
+              </div>
+            </div>
+            <p class="setting-hint">Choose the Gear set that currently owns this Crystal layout, then scan once. Veybot will move each Crystal to the matching Gear slot whenever combat changes Quick Sets. Shared items stay unchanged.</p>
+            <div id="powerCrystalStatus" class="setting-hint" aria-live="polite">Use Refresh to read this account's crystals.</div>
+            <div id="powerCrystalInventory" class="table-container"><div class="empty-state">Use Refresh to read this account's crystals.</div></div>
+            <p class="setting-hint">A read-only scan can run while the bot is active. If a completely full item hides its equipment ID, Veybot will ask you to pause before temporarily removing and restoring one Crystal to identify it. During automatic routing, combat waits until every required move is verified.</p>
           </div>
         </div>
         <div id="subviewHomeAutoFarm" class="subview-panel home-config-panel" style="display: none;">
@@ -759,16 +831,16 @@
                 value="large">Large pot</option><option value="full">Full pot</option><option value="adventure">Adventure pot</option></select></div>
             </div>
             <div id="rowSmallStaminaPotLimit" class="form-tree-row resource-child-row"><label class="form-tree-label"
-                for="inputSmallStaminaPotLimit">Small pots limit</label><div class="form-tree-control"><span class="potion-limit-status"><span id="smallStaminaPotsUsed" class="potion-count-used">0 used</span><span id="smallStaminaPotsAvailable" class="potion-count-available">0 left</span></span><input
+                for="inputSmallStaminaPotLimit">Small pots limit</label><div class="form-tree-control"><span class="potion-limit-status"><span id="smallStaminaPotsUsed" class="potion-count-used">0 used</span><button type="button" class="btn btn-secondary btn-sm workspace-icon-btn" data-reset-usage="staminaPotionsUsed.small" title="Reset this used counter (pause the bot first)" aria-label="Reset staminaPotionsUsed.small"><i data-lucide="rotate-ccw"></i></button><span id="smallStaminaPotsAvailable" class="potion-count-available">0 left</span></span><input
                 id="inputSmallStaminaPotLimit" type="number" class="tree-input-sm" min="0"></div></div>
             <div id="rowLargeStaminaPotLimit" class="form-tree-row resource-child-row"><label class="form-tree-label"
-                for="inputLargeStaminaPotLimit">Large pots limit</label><div class="form-tree-control"><span class="potion-limit-status"><span id="largeStaminaPotsUsed" class="potion-count-used">0 used</span><span id="largeStaminaPotsAvailable" class="potion-count-available">0 left</span></span><input
+                for="inputLargeStaminaPotLimit">Large pots limit</label><div class="form-tree-control"><span class="potion-limit-status"><span id="largeStaminaPotsUsed" class="potion-count-used">0 used</span><button type="button" class="btn btn-secondary btn-sm workspace-icon-btn" data-reset-usage="staminaPotionsUsed.large" title="Reset this used counter (pause the bot first)" aria-label="Reset staminaPotionsUsed.large"><i data-lucide="rotate-ccw"></i></button><span id="largeStaminaPotsAvailable" class="potion-count-available">0 left</span></span><input
                 id="inputLargeStaminaPotLimit" type="number" class="tree-input-sm" min="0"></div></div>
             <div id="rowFullStaminaPotLimit" class="form-tree-row resource-child-row"><label class="form-tree-label"
-                for="inputFullStaminaPotLimit">Full pots limit</label><div class="form-tree-control"><span class="potion-limit-status"><span id="fullStaminaPotsUsed" class="potion-count-used">0 used</span><span id="fullStaminaPotsAvailable" class="potion-count-available">0 left</span></span><input
+                for="inputFullStaminaPotLimit">Full pots limit</label><div class="form-tree-control"><span class="potion-limit-status"><span id="fullStaminaPotsUsed" class="potion-count-used">0 used</span><button type="button" class="btn btn-secondary btn-sm workspace-icon-btn" data-reset-usage="staminaPotionsUsed.full" title="Reset this used counter (pause the bot first)" aria-label="Reset staminaPotionsUsed.full"><i data-lucide="rotate-ccw"></i></button><span id="fullStaminaPotsAvailable" class="potion-count-available">0 left</span></span><input
                 id="inputFullStaminaPotLimit" type="number" class="tree-input-sm" min="0"></div></div>
             <div id="rowAdventureStaminaPotLimit" class="form-tree-row resource-child-row"><label class="form-tree-label"
-                for="inputAdventureStaminaPotLimit">Adventure pots limit</label><div class="form-tree-control"><span class="potion-limit-status"><span id="adventureStaminaPotsUsed" class="potion-count-used">0 used</span><span id="adventureStaminaPotsAvailable" class="potion-count-available">0 left</span></span><input
+                for="inputAdventureStaminaPotLimit">Adventure pots limit</label><div class="form-tree-control"><span class="potion-limit-status"><span id="adventureStaminaPotsUsed" class="potion-count-used">0 used</span><button type="button" class="btn btn-secondary btn-sm workspace-icon-btn" data-reset-usage="staminaPotionsUsed.adventure" title="Reset this used counter (pause the bot first)" aria-label="Reset staminaPotionsUsed.adventure"><i data-lucide="rotate-ccw"></i></button><span id="adventureStaminaPotsAvailable" class="potion-count-available">0 left</span></span><input
                 id="inputAdventureStaminaPotLimit" type="number" class="tree-input-sm" min="0"></div>
             </div>
           </div>
@@ -952,19 +1024,20 @@
 
       </section>
       <section id="viewBattlePass" class="view-panel objective-view" style="display: none;">
-        <div class="panel-header-row">
-          <div>
-            <div class="panel-header">Battle Pass</div>
-            <div id="battlePassStatus" class="panel-subtitle">Daily objectives are read from the authenticated Battle Pass page.</div>
-          </div>
-          <button id="btnRefreshBattlePass" class="btn btn-primary btn-sm workspace-icon-btn" type="button"
-            title="Refresh Battle Pass" aria-label="Refresh Battle Pass"><i data-lucide="rotate-cw"></i></button>
-        </div>
-        <div class="subtabs-bar">
+        <div class="subtabs-bar workspace-subtabs">
           <button class="subtab-btn active" id="subtabBattlePassGeneralBtn" type="button">General</button>
           <button class="subtab-btn" id="subtabBattlePassTargetsBtn" type="button">BP targets</button>
         </div>
         <div id="subviewBattlePassGeneral" class="subview-panel objective-subview">
+          <div class="panel-header-row">
+            <div>
+              <div class="panel-header">Battle Pass</div>
+              <div id="battlePassStatus" class="panel-subtitle">Daily objectives are read from the authenticated Battle Pass page.</div>
+            </div>
+            <button id="btnRefreshBattlePass" class="btn btn-primary btn-sm workspace-icon-btn" type="button"
+              title="Refresh Battle Pass" aria-label="Refresh Battle Pass"><i data-lucide="rotate-cw"></i></button>
+          </div>
+          <div class="home-config-panel objective-panel-body">
           <div id="battlePassCounters" class="objective-counter-grid"></div>
           <div class="tree-form-container objective-policy-box">
             <div class="form-tree-row"><label class="form-tree-label" for="chkBattlePassEnabled">Run daily objectives</label>
@@ -977,11 +1050,21 @@
               <div class="form-tree-control"><input id="chkBattlePassSafeCheck" type="checkbox" class="tree-checkbox"
                 title="After looting, confirm the Battle Pass counter advanced. Stop using that monster for this run if it did not count."></div></div>
           </div>
+          </div>
         </div>
         <div id="subviewBattlePassTargets" class="subview-panel objective-subview" style="display:none;">
-          <div class="panel-subtitle">Only monsters from the selected Grakthar 2 or Grakthar 3 Target Gate are used.</div>
+          <div class="panel-header-row">
+            <div>
+              <div class="panel-header">Battle Pass targets</div>
+              <div class="panel-subtitle">Configure monsters from the selected Target Gate.</div>
+            </div>
+            <button id="btnRefreshBattlePassTargets" class="btn btn-primary btn-sm workspace-icon-btn" type="button"
+              title="Refresh Battle Pass targets" aria-label="Refresh Battle Pass targets"><i data-lucide="rotate-cw"></i></button>
+          </div>
+          <div class="home-config-panel objective-panel-body">
           <div id="battlePassTargetsContent" class="objective-target-table"></div>
           <div class="objective-actions"><span>Lower priority numbers run first.</span></div>
+          </div>
         </div>
       </section>
       <section id="viewAdventureQuests" class="view-panel objective-view" style="display: none;">
@@ -993,25 +1076,62 @@
           <button id="btnRefreshAdventureQuests" class="btn btn-primary btn-sm workspace-icon-btn" type="button"
             title="Refresh quests" aria-label="Refresh quests"><i data-lucide="rotate-cw"></i></button>
         </div>
+        <div class="home-config-panel objective-panel-body">
         <div id="adventureQuestList" class="objective-list objective-quest-table"></div>
         <div class="objective-actions"><span>Only enabled, server-identified quests are accepted automatically.</span></div>
+        </div>
       </section>
       <section id="viewBossHunt" class="view-panel" style="display: none;">
-        <div class="panel-header-row">
-          <div>
-            <div class="panel-header">Boss Hunt</div>
-            <span id="bossHuntStatus" class="workspace-load-status" aria-live="polite"></span>
+        <div class="subtabs-bar workspace-subtabs"><button id="btnBossTargetsTab" type="button" class="subtab-btn active">Targets</button><button id="btnBossHistoryTab" type="button" class="subtab-btn">History</button></div>
+        <div id="bossHuntTargets" class="workspace-subview">
+          <div class="panel-header-row">
+            <div>
+              <div class="panel-header">Boss Hunt</div>
+              <span id="bossHuntStatus" class="workspace-load-status" aria-live="polite"></span>
+            </div>
+            <div class="workspace-area-toolbar">
+              <input id="inputBossHuntSearch" class="tree-input-flex boss-hunt-search" type="search"
+                placeholder="Search bosses or areas" aria-label="Filter known bosses">
+              <button id="btnRefreshBossHunt" class="btn btn-primary btn-sm workspace-icon-btn" type="button"
+                title="Refresh bosses from all accessible Gates and Events" aria-label="Refresh Boss Hunt">
+                <i data-lucide="rotate-cw"></i>
+              </button>
+            </div>
           </div>
-          <button id="btnRefreshBossHunt" class="btn btn-primary btn-sm workspace-icon-btn" type="button"
-            title="Refresh bosses from all accessible Gates and Events" aria-label="Refresh Boss Hunt">
-            <i data-lucide="rotate-cw"></i>
-          </button>
+          <div id="bossHuntContent" class="monster-config-content">
+            <div class="empty-state">Open this workspace to load known bosses.</div>
+          </div>
         </div>
-        <p class="compact-help">Boss Hunt uses independent targets and progress, and can move between every configured Gate and Event.</p>
-        <div id="bossHuntContent" class="monster-config-content">
-          <div class="empty-state">Open this workspace to load known bosses.</div>
-        </div>
+        <div id="bossHuntHistory" class="workspace-subview" style="display:none"><div class="panel-header-row"><span class="panel-header">Boss attack history</span><button id="btnRefreshBossHistory" type="button" class="btn btn-primary btn-sm workspace-icon-btn" title="Refresh Boss history" aria-label="Refresh Boss history"><i data-lucide="rotate-cw"></i></button></div><div id="bossHuntHistoryContent" class="activity-history-content"></div></div>
       </section>
+<section id="viewCustomRuns" class="view-panel objective-view custom-runs-view" style="display:none">
+  <div class="panel-header">Custom Runs</div>
+  <div class="home-config-panel custom-runs-panel">
+  <p class="custom-runs-intro">Choose what the bot does next when the current activity has nothing left to do.</p>
+  <div class="progression-profile-manager custom-run-manager" aria-label="Custom Run config manager">
+    <label for="selectCustomRun">Custom Runs Config:</label><select id="selectCustomRun" class="tree-select"></select>
+    <input id="inputRunName" class="tree-input-flex" maxlength="80" placeholder="Run name" aria-label="Run name">
+    <button id="btnCreateRun" class="btn btn-primary btn-sm workspace-icon-btn" type="button" title="Create an empty run" aria-label="Create a run"><i data-lucide="plus"></i></button>
+    <button id="btnRenameRun" class="btn btn-secondary btn-sm workspace-icon-btn" type="button" title="Rename the selected run" aria-label="Rename run"><i data-lucide="pencil"></i></button>
+    <button id="btnDuplicateRun" class="btn btn-secondary btn-sm workspace-icon-btn" type="button" title="Duplicate the selected run" aria-label="Duplicate run"><i data-lucide="copy"></i></button>
+    <button id="btnDeleteRun" class="btn btn-danger btn-sm workspace-icon-btn" type="button" title="Delete the selected run" aria-label="Delete run"><i data-lucide="trash-2"></i></button>
+  </div>
+  <div class="panel custom-run-behavior">
+    <div class="panel-header">How this run moves between steps</div>
+    <label class="custom-run-field"><span>Step order</span><select id="selectRunMode" class="tree-select"><option value="sequential">Run in order</option><option value="priority">Prioritize earlier steps</option></select></label>
+    <p id="customRunOrderHint" class="setting-hint"></p>
+    <div class="custom-run-timers">
+      <label class="custom-run-field" title="Productive work restarts this timer. Errors and ongoing battles do not count as finished."><span>Wait before leaving an idle step</span><div class="custom-run-seconds"><input id="inputRunIdle" type="number" min="5" max="3600" class="tree-input-sm" aria-label="Idle step wait in seconds"><span>seconds</span></div></label>
+      <label class="custom-run-field" title="If every step has nothing to do, wait this long before checking again."><span>Wait when the whole run is idle</span><div class="custom-run-seconds"><input id="inputRunRound" type="number" min="10" max="3600" class="tree-input-sm" aria-label="Full run wait in seconds"><span>seconds</span></div></label>
+    </div>
+  </div>
+  <div class="panel custom-run-workflow">
+    <div class="panel-header-row"><div><div class="panel-header">Run steps</div><div class="setting-hint">Each step uses the targets configured in that module's own tab.</div></div><button id="btnAddRunStep" class="btn btn-primary btn-sm" type="button"><i data-lucide="plus"></i> Add step</button></div>
+    <div id="customRunSteps" class="custom-run-steps"></div>
+  </div>
+  <div class="page-info-footer"><button id="btnCustomRunsPageInfo" class="btn btn-secondary btn-sm" type="button"><i data-lucide="circle-help"></i> Info</button></div>
+  </div>
+</section>
       <!-- SCREEN 4: Monster configuration -->
       <section id="viewNPCConfig" class="view-panel" style="display: none;">
         <div class="subtabs-bar workspace-subtabs">
@@ -1275,6 +1395,18 @@
         </div>
       </section>
 
+      <div id="modalSidebar" class="modal-overlay" style="display: none;">
+        <div class="modal-box module-info-modal" role="dialog" aria-modal="true" aria-labelledby="sidebarVisibilityTitle">
+          <div class="modal-header">
+            <h3 id="sidebarVisibilityTitle">Sidebar items</h3>
+            <button id="btnCloseSidebar" class="close-btn" type="button" aria-label="Close sidebar settings"><i data-lucide="x"></i></button>
+          </div>
+          <p class="module-info-body">Choose which items appear in the left menu. Hiding an item does not disable its module. Overview stays visible.</p>
+          <div id="sidebarVisibilityList" class="tree-form-container"></div>
+          <div class="page-info-footer"><button id="btnResetSidebar" class="btn btn-secondary btn-sm" type="button">Show all</button></div>
+        </div>
+      </div>
+
       <!-- MODAL: Module information -->
       <div id="modalModuleInfo" class="modal-overlay" style="display: none;">
         <div class="modal-box module-info-modal" role="dialog" aria-modal="true" aria-labelledby="moduleInfoTitle">
@@ -1422,7 +1554,7 @@
     <span class="footer-item">Local:&nbsp;<span id="footerLocalTime">-</span></span>
   </div>
   <div class="footer-right">
-    <span class="footer-version">v2.5.5</span>
+    <span class="footer-version">v2.5.6</span>
   </div>
 </footer>
 </div>

@@ -4,7 +4,7 @@ function populateEquipmentSetOptions() {
     for (let setNumber = 1; setNumber <= 10; setNumber += 1) {
       const option = document.createElement('option');
       option.value = `quick_set_${setNumber}`;
-      option.textContent = `Quick Set ${setNumber}`;
+      option.textContent = uiText("Quick Set {0}", setNumber);
       select.appendChild(option);
     }
   });
@@ -36,7 +36,7 @@ function renderProgressionProfileControls() {
     select.replaceChildren(...rows.map(profile => {
       const option = document.createElement('option');
       option.value = profile.id;
-      option.textContent = profile.name;
+      option.textContent = profile.id === 'default' ? uiText('Default') : profile.name;
       return option;
     }));
     select.value = activeId;
@@ -50,6 +50,8 @@ function renderProgressionProfileControls() {
 }
 
 function loadProgressionProfileConfiguration(config = {}) {
+  customRunProfiles = config.progressionProfiles?.profiles || {default:{name:'Default'}};
+  renderCustomRuns();
   progressionProfilesConfig = config.progressionProfiles || { activeId: 'default', profiles: {} };
   renderProgressionProfileControls();
   const progression = config.progression || {};
@@ -125,7 +127,7 @@ btnDeleteProgressionProfile?.addEventListener('click', async () => {
   const profileId = progressionProfilesConfig.activeId;
   const profile = progressionProfilesConfig.profiles?.[profileId];
   if (!profile || profileId === 'default') return;
-  if (!window.confirm(`Delete Progression profile "${profile.name}"?`)) return;
+  if (!window.confirm(uiText("Delete Progression profile \"{0}\"?", profile.name))) return;
   const result = await trackConfigSave(window.botAPI.deleteProgressionProfile(profileId));
   if (!result?.success) {
     appendLog('ERROR', result?.error || 'Could not delete Progression profile');
@@ -156,7 +158,7 @@ function renderProgressionStatus(stats = latestStats) {
     const boostPercent = Number(latestProgressionTelemetry?.lootXpBoostPercent) || 0;
     progressionCurrentState.textContent = enabled
       ? `${status}${latestProgressionTelemetry?.lootXpBoostActive === true ? ` · XP +${boostPercent}%` : ''}`
-      : 'Disabled';
+      : uiText('Disabled');
   }
   renderProgressionStaminaFlow();
   if (progressionLootXp) {
@@ -172,8 +174,8 @@ function renderProgressionStatus(stats = latestStats) {
     progressionLootScan.textContent = !lootLevelingEnabled
       ? '-'
       : !scanned
-        ? 'Not scanned'
-        : `${eligibleCount} eligible${unknownCount ? ` · ${unknownCount} unverified` : ''}${errorCount ? ` · ${errorCount} failed` : ''}`;
+        ? uiText('Not scanned')
+        : uiText("{0} eligible{1}{2}", eligibleCount, unknownCount ? ` · ${unknownCount} unverified` : '', errorCount ? ` · ${errorCount} failed` : '');
   }
   if (btnRefreshProgressionLoot) btnRefreshProgressionLoot.disabled = selectGeneralModule?.value === 'auto_farm' || !lootLevelingEnabled || !hasLootSource;
   if (!progressionXpNeeded) return;
@@ -215,7 +217,7 @@ function renderProgressionStaminaFlow() {
     step.classList.toggle('is-disabled', state.enabled !== true);
     step.classList.toggle('is-unavailable', state.enabled === true && state.available !== true && flow.current !== key);
     step.classList.toggle('is-active', flow.current === key);
-    step.title = flow.current === key ? 'Current action' : state.enabled !== true ? 'Turned off' : state.available !== true ? 'Currently unavailable' : 'Available';
+    step.title = flow.current === key ? uiText('Current action') : state.enabled !== true ? uiText('Turned off') : state.available !== true ? uiText('Currently unavailable') : uiText('Available');
   }
 }
 
@@ -227,10 +229,10 @@ function renderProgressionStaminaPotionCounters(telemetry = {}) {
     availableByType[item.type] += Math.max(0, Number(item.quantity) || 0);
   }
   for (const [type, elements] of Object.entries(progressionStaminaPotionCounters || {})) {
-    if (elements.used) elements.used.textContent = `${Math.max(0, Number(usedByType[type]) || 0).toLocaleString()} used`;
+    if (elements.used) elements.used.textContent = uiText("{0} used", Math.max(0, Number(usedByType[type]) || 0).toLocaleString());
     if (elements.available) {
       const quantity = Math.max(0, Number(availableByType[type]) || 0);
-      elements.available.textContent = telemetry.potions?.recognized === true ? `${quantity.toLocaleString()} left` : '— left';
+      elements.available.textContent = telemetry.potions?.recognized === true ? uiText("{0} left", quantity.toLocaleString()) : uiText('— left');
     }
   }
 }
@@ -240,13 +242,13 @@ async function refreshProgressionLootViews() {
   const refresh = (async () => {
     setRefreshBusy(btnRefreshProgressionLoot, true);
     if (btnRefreshAvailableLoot) btnRefreshAvailableLoot.disabled = true;
-    if (progressionLootScan) progressionLootScan.textContent = 'Scanning…';
+    if (progressionLootScan) progressionLootScan.textContent = uiText('Scanning…');
     if (!latestProgressionLootView && progressionAvailableLootContent) {
-      progressionAvailableLootContent.innerHTML = '<div class="empty-state">Scanning configured unclaimed loot…</div>';
+      progressionAvailableLootContent.innerHTML = ("<div class=\"empty-state\">" + uiText("Scanning configured unclaimed loot…") + "</div>");
     }
     try {
-      const result = await withUiTimeout(window.botAPI.refreshProgressionLoot(), 90000, 'Progression loot scan');
-      if (!result?.success) throw new Error(result?.error || 'Eligible loot could not be scanned');
+      const result = await withUiTimeout(window.botAPI.refreshProgressionLoot(), 90000, uiText('Progression loot scan'));
+      if (!result?.success) throw new Error(result?.error || uiText('Eligible loot could not be scanned'));
       latestProgressionTelemetry = result.progression || null;
       applyProgressionLootView(result.progression?.availableLoot || { entries: [], errors: [] });
       renderProgressionStatus();
@@ -259,7 +261,7 @@ async function refreshProgressionLootViews() {
         appendLog('WARN', `Loot scan source failed: ${scanErrorText(error)}`);
       }
     } catch (error) {
-      if (progressionLootScan) progressionLootScan.textContent = latestProgressionLootView ? 'Refresh failed · showing last scan' : 'Scan failed';
+      if (progressionLootScan) progressionLootScan.textContent = latestProgressionLootView ? uiText('Refresh failed · showing last scan') : uiText('Scan failed');
       if (latestProgressionLootView) renderAvailableProgressionLoot(latestProgressionLootView.entries || [], latestProgressionLootView.errors || []);
       else renderAvailableProgressionLoot([], [{ message: error.message }]);
       appendLog('ERROR', error.message);
@@ -298,8 +300,8 @@ function renderProgressionScanErrors(errors = []) {
   if (!progressionScanErrors || !progressionScanErrorsContent || !progressionScanErrorsSummary) return;
   progressionScanErrors.style.display = errors.length ? 'block' : 'none';
   progressionScanErrorsSummary.textContent = errors.length
-    ? `${errors.length} source error${errors.length === 1 ? '' : 's'} · view details`
-    : 'Scan details';
+    ? uiText("{0} source error{1} · view details", errors.length, errors.length === 1 ? '' : 's')
+    : uiText('Scan details');
   progressionScanErrorsContent.replaceChildren(...errors.map(error => {
     const row = document.createElement('div');
     row.className = 'scan-error-row';
@@ -315,7 +317,7 @@ async function syncProgressionLootSnapshot(expectedRevision = null) {
   const generation = progressionLootSessionGeneration;
   const sync = (async () => {
     const result = await window.botAPI.listAvailableProgressionLoot();
-    if (!result?.success) throw new Error(result?.error || 'Progression loot snapshot is unavailable');
+    if (!result?.success) throw new Error(result?.error || uiText('Progression loot snapshot is unavailable'));
     if (generation === progressionLootSessionGeneration) applyProgressionLootView(result);
     return result;
   })();
@@ -331,7 +333,7 @@ function renderAvailableProgressionLoot(entries = [], errors = []) {
   if (!progressionAvailableLootContent) return;
   if (entries.length === 0) {
     const empty = document.createElement('div'); empty.className = 'empty-state';
-    empty.textContent = errors.length ? `No readable loot found. ${errors.length} source error(s).` : 'No unclaimed loot was found.';
+    empty.textContent = errors.length ? uiText("No readable loot found. {0} source error(s).", errors.length) : uiText('No unclaimed loot was found.');
     progressionAvailableLootContent.replaceChildren(empty); return;
   }
   const groups = new Map();
@@ -346,13 +348,13 @@ function renderAvailableProgressionLoot(entries = [], errors = []) {
     const summary = document.createElement('summary');
     const name = document.createElement('strong'); name.textContent = group.name;
     const area = document.createElement('span'); area.textContent = group.area || '—';
-    const count = document.createElement('span'); count.textContent = `${group.entries.reduce((sum, entry) => sum + Math.max(1, Number(entry.stackSize) || 1), 0)} lootable`;
+    const count = document.createElement('span'); count.textContent = uiText("{0} lootable", group.entries.reduce((sum, entry) => sum + Math.max(1, Number(entry.stackSize) || 1), 0));
     summary.append(name, area, count); details.append(summary);
     for (const entry of group.entries) {
       const row = document.createElement('div'); row.className = 'progression-loot-entry';
       const identity = document.createElement('span'); identity.textContent = entry.instanceId ? `${entry.monsterId} / ${entry.instanceId}` : entry.monsterId;
-      const damage = document.createElement('span'); damage.textContent = Number.isFinite(Number(entry.userDamage)) ? `${formatNumber(entry.userDamage)} damage` : 'Damage unverified';
-      const open = document.createElement('button'); open.type = 'button'; open.className = 'btn btn-sm'; open.textContent = 'Open'; open.disabled = !entry.pageUrl;
+      const damage = document.createElement('span'); damage.textContent = Number.isFinite(Number(entry.userDamage)) ? uiText("{0} damage", formatNumber(entry.userDamage)) : uiText('Damage unverified');
+      const open = document.createElement('button'); open.type = 'button'; open.className = 'btn btn-sm'; open.textContent = uiText('Open'); open.disabled = !entry.pageUrl;
       open.addEventListener('click', async () => {
         const result = await window.botAPI.openBattleInBrowser(entry.pageUrl);
         if (!result?.success) appendLog('ERROR', result?.error || 'Could not open the loot battle page');

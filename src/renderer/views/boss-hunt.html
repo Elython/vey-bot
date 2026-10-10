@@ -1,16 +1,23 @@
       <section id="viewBossHunt" class="view-panel" style="display: none;">
-        <div class="panel-header-row">
-          <div>
-            <div class="panel-header">Boss Hunt</div>
-            <span id="bossHuntStatus" class="workspace-load-status" aria-live="polite"></span>
+        <div class="subtabs-bar workspace-subtabs"><button id="btnBossTargetsTab" type="button" class="subtab-btn active">Targets</button><button id="btnBossHistoryTab" type="button" class="subtab-btn">History</button></div>
+        <div id="bossHuntTargets" class="workspace-subview">
+          <div class="panel-header-row">
+            <div>
+              <div class="panel-header">Boss Hunt</div>
+              <span id="bossHuntStatus" class="workspace-load-status" aria-live="polite"></span>
+            </div>
+            <div class="workspace-area-toolbar">
+              <input id="inputBossHuntSearch" class="tree-input-flex boss-hunt-search" type="search"
+                placeholder="Search bosses or areas" aria-label="Filter known bosses">
+              <button id="btnRefreshBossHunt" class="btn btn-primary btn-sm workspace-icon-btn" type="button"
+                title="Refresh bosses from all accessible Gates and Events" aria-label="Refresh Boss Hunt">
+                <i data-lucide="rotate-cw"></i>
+              </button>
+            </div>
           </div>
-          <button id="btnRefreshBossHunt" class="btn btn-primary btn-sm workspace-icon-btn" type="button"
-            title="Refresh bosses from all accessible Gates and Events" aria-label="Refresh Boss Hunt">
-            <i data-lucide="rotate-cw"></i>
-          </button>
+          <div id="bossHuntContent" class="monster-config-content">
+            <div class="empty-state">Open this workspace to load known bosses.</div>
+          </div>
         </div>
-        <p class="compact-help">Boss Hunt uses independent targets and progress, and can move between every configured Gate and Event.</p>
-        <div id="bossHuntContent" class="monster-config-content">
-          <div class="empty-state">Open this workspace to load known bosses.</div>
-        </div>
+        <div id="bossHuntHistory" class="workspace-subview" style="display:none"><div class="panel-header-row"><span class="panel-header">Boss attack history</span><button id="btnRefreshBossHistory" type="button" class="btn btn-primary btn-sm workspace-icon-btn" title="Refresh Boss history" aria-label="Refresh Boss history"><i data-lucide="rotate-cw"></i></button></div><div id="bossHuntHistoryContent" class="activity-history-content"></div></div>
       </section>

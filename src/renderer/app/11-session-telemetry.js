@@ -28,13 +28,13 @@ function createAccountItem(account, includeLogin) {
   if (includeLogin) {
     const login = document.createElement('button');
     login.className = 'btn btn-primary btn-sm';
-    login.textContent = 'Login';
+    login.textContent = uiText('Login');
     login.addEventListener('click', () => window.loginWith(account.name));
     actions.appendChild(login);
   }
   const remove = document.createElement('button');
   remove.className = 'btn btn-danger btn-sm';
-  remove.textContent = 'Delete';
+  remove.textContent = uiText('Delete');
   remove.addEventListener('click', () => window.deleteAccount(account.name));
   actions.appendChild(remove);
   item.append(name, actions);
@@ -47,7 +47,7 @@ async function refreshAccounts() {
   if (savedAccountsList) {
     savedAccountsList.innerHTML = '';
     if (accounts.length === 0) {
-      savedAccountsList.innerHTML = '<div class="empty-state">No saved accounts found. Click below to add one.</div>';
+      savedAccountsList.innerHTML = ("<div class=\"empty-state\">" + uiText("No saved accounts found. Click below to add one.") + "</div>");
     } else {
       accounts.forEach(acc => savedAccountsList.appendChild(createAccountItem(acc, true)));
     }
@@ -56,7 +56,7 @@ async function refreshAccounts() {
   if (modalAccountsList) {
     modalAccountsList.innerHTML = '';
     if (accounts.length === 0) {
-      modalAccountsList.innerHTML = '<div class="empty-state">No saved accounts.</div>';
+      modalAccountsList.innerHTML = ("<div class=\"empty-state\">" + uiText("No saved accounts.") + "</div>");
     } else {
       accounts.forEach(acc => modalAccountsList.appendChild(createAccountItem(acc, false)));
     }
@@ -117,14 +117,14 @@ window.loginWith = async function (accountName) {
     await loadFarmSettings();
 
   } else {
-    alert(`Failed to login: ${res.error}`);
+    alert(uiText("Failed to login: {0}", res.error));
     appendLog('ERROR', `Login failed: ${res.error}`);
   }
 };
 
 // Delete Account
 window.deleteAccount = async function (accountName) {
-  if (confirm(`Are you sure you want to delete ${accountName}?`)) {
+  if (confirm(uiText("Are you sure you want to delete {0}?", accountName))) {
     await window.botAPI.deleteAccount(accountName);
     if (activeAccount === accountName) {
       performLogout();
@@ -187,7 +187,7 @@ function updateBotStatus(state) {
     LOOTING: 'Looting', HEALING: 'Healing', FARMING_ENERGY: 'Farming energy',
     CHALLENGE_WAIT: 'Challenge waiting', PAUSED: 'Paused',
   };
-  if (botStateText) botStateText.textContent = labels[state] || state;
+  if (botStateText) botStateText.textContent = uiText(labels[state] || state);
   if (menuPauseResumeBtn) {
     setButtonIcon(menuPauseResumeBtn, state === 'PAUSED' ? 'play' : 'pause', state === 'PAUSED' ? 'Resume Bot' : 'Pause Bot');
     menuPauseResumeBtn.disabled = state === 'STOPPED';
@@ -290,7 +290,7 @@ menuLogoutBtn.addEventListener('click', () => {
 });
 
 btnHeaderQuit.addEventListener('click', () => {
-  if (confirm('Are you sure you want to quit?')) {
+  if (confirm(uiText('Are you sure you want to quit?'))) {
     window.botAPI.quitApp();
   }
 });
@@ -310,7 +310,7 @@ btnSaveScheduler.addEventListener('click', async () => {
     appendLog('ERROR', 'Gate delays require at least 1.05 sec; Dungeon delays require at least 0.01 sec; target rescans require at least 1 second; Lootable scans require at least 1 minute; each maximum must be at least its minimum.');
     return;
   }
-  if (!chkDryRun.checked && !confirm('Enable live actions? The bot will send join, attack, heal, loot, and reaction requests to the game.')) {
+  if (!chkDryRun.checked && !confirm(uiText('Enable live actions? The bot will send join, attack, heal, loot, and reaction requests to the game.'))) {
     chkDryRun.checked = true;
     return;
   }
@@ -328,7 +328,7 @@ btnSaveScheduler.addEventListener('click', async () => {
   if (result?.success) {
     loadSchedulerConfiguration(result.config);
     appendLog('INFO', `Attack pacing updated: Gates ${gateMinSeconds}-${gateMaxSeconds}s; Dungeons ${dungeonMinSeconds}-${dungeonMaxSeconds}s (${chkDryRun.checked ? 'dry run' : 'live mode'})`);
-    alert('Bot pacing saved!');
+    alert(uiText('Bot pacing saved!'));
   } else {
     appendLog('ERROR', result?.error || 'Could not save settings');
   }
@@ -368,14 +368,23 @@ window.botAPI.onLootDiscovery?.(snapshot => {
 
 function renderOverviewTelemetry(telemetry) {
   if (!telemetry) return;
+  const runStatus=document.getElementById('overviewCustomRun');
+  if(runStatus){
+    runStatus.style.display=telemetry.customRun?'flex':'none';
+    if(telemetry.customRun){const r=telemetry.customRun;
+      document.getElementById('overviewRunName').textContent=r.name;
+      document.getElementById('overviewRunStep').textContent=uiText('Step ')+r.step+' / '+r.total;
+      document.getElementById('overviewRunDetail').textContent=r.reason+(r.remainingSeconds?' · '+r.remainingSeconds+uiText('s'):'');
+    }
+  }
   const runtime = telemetry.runtimeStatus || {};
-  if (botActionText) botActionText.textContent = telemetry.currentAction || '-';
+  if (botActionText) botActionText.textContent = uiText(telemetry.currentAction || '-');
   if (botTargetText) botTargetText.textContent = telemetry.target?.name || '-';
-  if (overviewTargetName) overviewTargetName.textContent = telemetry.target?.name || runtime.title || 'Nothing running';
-  if (overviewActionReason) overviewActionReason.textContent = runtime.detail || telemetry.currentReason || 'Waiting for the next decision.';
+  if (overviewTargetName) overviewTargetName.textContent = telemetry.target?.name || uiText(runtime.title || 'Nothing running');
+  if (overviewActionReason) overviewActionReason.textContent = runtime.detail || telemetry.currentReason || uiText('Waiting for the next decision.');
   if (overviewRuntimeBadge) {
     const kind = String(runtime.kind || 'active').toLowerCase();
-    overviewRuntimeBadge.textContent = runtime.title || telemetry.state || 'Working';
+    overviewRuntimeBadge.textContent = uiText(runtime.title || telemetry.state || 'Working');
     overviewRuntimeBadge.className = `runtime-status-badge is-${kind}`;
   }
   const currentDamage = Number(telemetry.target?.userDmg || 0);
@@ -387,23 +396,23 @@ function renderOverviewTelemetry(telemetry) {
       ? `${currentDamage.toLocaleString()} / ${targetDamage.toLocaleString()}`
       : '-';
   }
-  if (overviewModuleName) overviewModuleName.textContent = telemetry.module?.displayName || telemetry.module?.label || 'Idle';
+  if (overviewModuleName) overviewModuleName.textContent = telemetry.module?.displayName || telemetry.module?.label || uiText('Idle');
   if (overviewConnectionText) {
     const autoFarmModule = telemetry.module?.id === 'auto_farm';
     overviewConnectionText.textContent = autoFarmModule
-      ? (telemetry.autoFarm?.running ? 'Server Auto Farm running' : 'Server Auto Farm starting or paused')
-      : telemetry.connection?.connected ? 'Game session connected' : 'Game session unavailable';
+      ? (telemetry.autoFarm?.running ? uiText('Server Auto Farm running') : uiText('Server Auto Farm starting or paused'))
+      : telemetry.connection?.connected ? uiText('Game session connected') : uiText('Game session unavailable');
     overviewConnectionText.classList.toggle('is-active', autoFarmModule && telemetry.autoFarm?.running === true);
   }
   const eligibleLootCount = Number(telemetry.progression?.eligibleLootCount) || 0;
   if (overviewProgressionState) {
     overviewProgressionState.textContent = telemetry.state === 'STOPPED' && eligibleLootCount > 0
-      ? `${eligibleLootCount.toLocaleString()} eligible · press Start`
-      : (telemetry.progression?.status || 'Monitoring');
+      ? uiText("{0} eligible · press Start", eligibleLootCount.toLocaleString())
+      : (telemetry.progression?.status || uiText('Monitoring'));
   }
   if (overviewProgressionXp) {
     const eligibleXp = Number(telemetry.progression?.eligibleLootXp);
-    overviewProgressionXp.textContent = `Eligible loot XP: ${Number.isFinite(eligibleXp) ? eligibleXp.toLocaleString() : '-'}`;
+    overviewProgressionXp.textContent = uiText("Eligible loot XP: {0}", Number.isFinite(eligibleXp) ? eligibleXp.toLocaleString() : '-');
   }
   const runStats = telemetry.stats || {};
   if (overviewSessionKills) overviewSessionKills.textContent = (Number(runStats.monstersKilled) || 0).toLocaleString();
@@ -437,13 +446,13 @@ function renderBotSetupResourceCounters(telemetry = {}) {
     if (item?.category === 'mana' && item?.type === 'large') available.largeMana += quantity;
   }
   const recognized = telemetry.potions?.recognized === true;
-  if (healthDeathsUsed) healthDeathsUsed.textContent = `${Math.max(0, Number(runStats.deaths) || 0).toLocaleString()} deaths`;
-  if (healthPotsUsed) healthPotsUsed.textContent = `${Math.max(0, Number(runStats.healthPotionsUsed) || 0).toLocaleString()} used`;
-  if (healthPotsAvailable) healthPotsAvailable.textContent = recognized ? `${available.health.toLocaleString()} left` : '— left';
-  if (smallManaPotsUsed) smallManaPotsUsed.textContent = `${Math.max(0, Number(runStats.manaPotionsUsed?.small) || 0).toLocaleString()} used`;
-  if (smallManaPotsAvailable) smallManaPotsAvailable.textContent = recognized ? `${available.smallMana.toLocaleString()} left` : '— left';
-  if (largeManaPotsUsed) largeManaPotsUsed.textContent = `${Math.max(0, Number(runStats.manaPotionsUsed?.large) || 0).toLocaleString()} used`;
-  if (largeManaPotsAvailable) largeManaPotsAvailable.textContent = recognized ? `${available.largeMana.toLocaleString()} left` : '— left';
+  if (healthDeathsUsed) healthDeathsUsed.textContent = uiText("{0} deaths", Math.max(0, Number(runStats.deaths) || 0).toLocaleString());
+  if (healthPotsUsed) healthPotsUsed.textContent = uiText("{0} used", Math.max(0, Number(runStats.healthPotionsUsed) || 0).toLocaleString());
+  if (healthPotsAvailable) healthPotsAvailable.textContent = recognized ? uiText("{0} left", available.health.toLocaleString()) : uiText('— left');
+  if (smallManaPotsUsed) smallManaPotsUsed.textContent = uiText("{0} used", Math.max(0, Number(runStats.manaPotionsUsed?.small) || 0).toLocaleString());
+  if (smallManaPotsAvailable) smallManaPotsAvailable.textContent = recognized ? uiText("{0} left", available.smallMana.toLocaleString()) : uiText('— left');
+  if (largeManaPotsUsed) largeManaPotsUsed.textContent = uiText("{0} used", Math.max(0, Number(runStats.manaPotionsUsed?.large) || 0).toLocaleString());
+  if (largeManaPotsAvailable) largeManaPotsAvailable.textContent = recognized ? uiText("{0} left", available.largeMana.toLocaleString()) : uiText('— left');
 }
 
 function renderMonsterPhasePvpTelemetry(phase) {
@@ -458,12 +467,12 @@ function renderMonsterPhasePvpTelemetry(phase) {
     error: 'Watcher error',
   };
   const label = labels[phase.status] || String(phase.status || 'Fighting automatically');
-  if (monsterPhasePvpStatus) monsterPhasePvpStatus.textContent = label;
-  if (monsterPhasePvpOpponent) monsterPhasePvpOpponent.textContent = phase.targetName || 'Phase opponent';
+  if (monsterPhasePvpStatus) monsterPhasePvpStatus.textContent = uiText(label);
+  if (monsterPhasePvpOpponent) monsterPhasePvpOpponent.textContent = phase.targetName || uiText('Phase opponent');
   if (monsterPhasePvpActiveId) monsterPhasePvpActiveId.textContent = phase.activeId || '—';
-  if (monsterPhasePvpWatcher) monsterPhasePvpWatcher.textContent = phase.watcherActive ? 'Connected' : 'Starting';
+  if (monsterPhasePvpWatcher) monsterPhasePvpWatcher.textContent = phase.watcherActive ? uiText('Connected') : uiText('Starting');
   if (monsterPhasePvpLiveBadge) {
-    monsterPhasePvpLiveBadge.textContent = phase.status === 'complete' ? 'Complete' : phase.status === 'error' ? 'Error' : 'Live';
+    monsterPhasePvpLiveBadge.textContent = phase.status === 'complete' ? uiText('Complete') : phase.status === 'error' ? uiText('Error') : uiText('Live');
     monsterPhasePvpLiveBadge.classList.toggle('is-error', phase.status === 'error');
   }
 }
@@ -474,7 +483,7 @@ function renderOverviewPotionCounters(potions) {
   if (potions?.recognized !== true) {
     const message = document.createElement('span');
     message.className = 'overview-card-detail';
-    message.textContent = 'Read when a battle page is available.';
+    message.textContent = uiText('Read when a battle page is available.');
     overviewPotionCounters.appendChild(message);
     return;
   }
@@ -489,7 +498,7 @@ function renderOverviewPotionCounters(potions) {
   if (quantities.size === 0) {
     const message = document.createElement('span');
     message.className = 'overview-card-detail';
-    message.textContent = 'No supported potions are present in the battle inventory.';
+    message.textContent = uiText('No supported potions are present in the battle inventory.');
     overviewPotionCounters.appendChild(message);
     return;
   }
@@ -555,7 +564,7 @@ function renderPlayerStats(stats) {
   renderCombatPlayerStats(stats);
   if (statGold && stats.gold && stats.gold !== '0') statGold.textContent = stats.gold;
   if (statGems && stats.gems && stats.gems !== '0') statGems.textContent = stats.gems;
-  if (statLevel && stats.level && stats.level > 0) statLevel.textContent = `Lv. ${stats.level} (${stats.expPercent || '0%'})`;
+  if (statLevel && stats.level && stats.level > 0) statLevel.textContent = uiText("Lv. {0} ({1})", stats.level, stats.expPercent || '0%');
   renderProgressionStatus(stats);
 
   if (statEnergy && ((stats.farmedEnergy !== undefined && stats.farmedEnergy !== null) || stats.energy !== undefined)) {

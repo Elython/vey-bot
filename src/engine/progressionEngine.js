@@ -118,6 +118,18 @@ class ProgressionEngine {
     };
 
     if (policy.useLootForLeveling === true && claimPlan.enough) {
+      const combatNeedsRefill = Boolean(state.currentBattle)
+        && state.isJoined === true
+        && state.monsterDead !== true
+        && state.targetReached !== true
+        && state.combatTargetEligible !== false;
+      if (!combatNeedsRefill && state.progressionLootBatchActive !== true) {
+        return {
+          ...statusBase,
+          needsCombatTarget: !state.currentBattle || state.monsterDead === true || state.targetReached === true || state.combatTargetEligible === false,
+          status: 'Banking loot; waiting for an eligible combat target before leveling',
+        };
+      }
       const imminent = this._imminentLevelPlan(accountName, state, chaptersAvailable, activeConfig);
       if ((Number(state.stamina) || 0) > 0) {
         if (chapterFallbackEnabled && imminent?.plan?.chapters > 0) {
@@ -164,6 +176,17 @@ class ProgressionEngine {
     }
     const chapterFallbackAvailable = chapterFallbackEnabled
       && Number(chaptersAvailable) > 0;
+    if (chapterFallbackAvailable && state.currentBattle && state.isJoined === true
+      && state.monsterDead !== true && state.targetReached !== true && state.combatTargetEligible !== false) {
+      return {
+        ...statusBase,
+        staminaFlow: { ...statusBase.staminaFlow, current: 'chapters' },
+        drainForChapterFallback: Number(state.stamina) > 0,
+        status: Number(state.stamina) > 0
+          ? 'Draining Stamina before Chapter fallback'
+          : 'Using Chapter fallback before target-authorized potions',
+      };
+    }
     if (potionFallbackEnabled
       && !chapterFallbackAvailable
       && state.currentBattle

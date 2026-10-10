@@ -281,10 +281,9 @@ class ObjectiveModuleService {
     this.now = options.now || (() => Date.now());
     this.readCoordinator = options.readCoordinator || null;
     this.mode = options.mode || 'shared';
-    if (!['shared', 'legacy'].includes(this.mode)) throw new Error(`Unsupported objective mode: ${this.mode}`);
-    if (this.mode === 'shared' && !this.readCoordinator) throw new TypeError('Shared objectives require ReadCoordinator');
-    this.accountKey = this.mode === 'shared' ? assertAccountKey(options.accountKey) : null;
-    this.cache = new Map();
+    if (this.mode !== 'shared') throw new Error(`Unsupported objective mode: ${this.mode}`);
+    if (!this.readCoordinator) throw new TypeError('Shared objectives require ReadCoordinator');
+    this.accountKey = assertAccountKey(options.accountKey);
     this.sourceRevision = 0;
     this.collectors = Object.freeze({
       battle_pass: Object.freeze({ collect: request => this._collectBattlePass(request) }),
@@ -342,18 +341,6 @@ class ObjectiveModuleService {
     });
   }
 
-  async _legacyRead(module, force, signal) {
-    const cached = this.cache.get(module);
-    if (!force && cached && this.now() - cached.refreshedAt < REFRESH_MS) return clone(cached.page);
-    throwIfAborted(signal);
-    const page = module === 'adventure_quests'
-      ? normalizeAdventureQuestObservation(await this.gameAPI.getAdventurerQuests())
-      : normalizeBattlePassObservation(await this.gameAPI.getBattlePass());
-    throwIfAborted(signal);
-    this.cache.set(module, { refreshedAt: this.now(), page: clone(page) });
-    return page;
-  }
-
   async _sharedRead(module, { force, priority, maxAgeMs, signal }) {
     const { domain, resourceKey } = this._resource(module);
     try {
@@ -385,9 +372,7 @@ class ObjectiveModuleService {
     signal = null,
   } = {}) {
     if (!MODULE_RESOURCE[module]) return { module, status: 'inactive', scan: null, nextAction: null };
-    const page = this.mode === 'shared'
-      ? await this._sharedRead(module, { force, priority, maxAgeMs: force ? 0 : maxAgeMs, signal })
-      : await this._legacyRead(module, force, signal);
+    const page = await this._sharedRead(module, { force, priority, maxAgeMs: force ? 0 : maxAgeMs, signal });
     return module === 'adventure_quests'
       ? projectAdventureState(page, config)
       : projectBattlePassState(page, config);
@@ -399,8 +384,7 @@ class ObjectiveModuleService {
     for (const entry of modules) {
       const resource = MODULE_RESOURCE[entry];
       if (!resource) continue;
-      if (this.mode === 'legacy') changed = this.cache.delete(entry) || changed;
-      else changed = this.readCoordinator.invalidate(
+      changed = this.readCoordinator.invalidate(
         this.accountKey,
         resource.domain,
         resource.resourceKey,
@@ -416,7 +400,6 @@ class ObjectiveModuleService {
 
   peekObservation(module) {
     const resource = this._resource(module);
-    if (this.mode === 'legacy') return clone(this.cache.get(module)?.page || null);
     return clone(this.readCoordinator.peek(this.accountKey, resource.domain, resource.resourceKey)?.value || null);
   }
 

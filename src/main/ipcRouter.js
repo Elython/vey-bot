@@ -18,6 +18,8 @@ const { resolveLootXpBoost } = require('../engine/progressionEngine');
 const { ReadPriority } = require('../engine/worldState');
 const { projectLootableArea } = require('../engine/lootDiscoveryService');
 const { nextUnfarmedChapter } = require('../engine/chapterCatalog');
+const { applyPendingConfiguration } = require('./configurationApplication');
+const { projectChapterSettings } = require('../engine/chapterSettings');
 
 /**
  * Register all IPC handlers
@@ -35,6 +37,7 @@ const { nextUnfarmedChapter } = require('../engine/chapterCatalog');
  * @param {Function} deps.getEnergyFarmEngine - Returns current energy farm engine instance (may be null)
  * @param {Function} deps.getConfigManager - Returns the canonical configuration manager
  * @param {Function} deps.getAutoFarmService - Returns the authenticated Auto Farm service
+ * @param {Function} deps.getPowerCrystalService - Returns the account-scoped Power Crystal service
  * @param {Function} deps.getMonsterCatalogService - Returns the current Monster Catalog service
  * @param {Function} deps.getAreaDirectoryService - Returns the account-scoped Dungeon/Cube directory service
  * @param {Function} deps.getTargetDiscoveryService - Returns the account-scoped shared Target discovery service
@@ -69,6 +72,7 @@ function registerIpcHandlers(deps) {
     getActivityHistoryStore,
     getAccountDatabase,
     getCubePvpService,
+    getPowerCrystalService,
   } = deps;
 
   const validAccountName = value => typeof value === 'string' && value.trim().length > 0 && value.length <= 100;
@@ -265,14 +269,16 @@ function registerIpcHandlers(deps) {
     // Starting is also an apply boundary. UI edits are persisted immediately,
     // but the running engine only adopts them here or through bot:apply-config.
     const config = getConfigManager().getConfig();
+    const selectedRun=config.customRuns?.runs?.[config.customRuns?.activeId];
+    if(app.isPackaged && (config.general.module==='pvp'||(config.general.module==='custom_runs'&&selectedRun?.steps?.some(step=>step.enabled&&step.module==='pvp'))))return {success:false,error:'Solo PvP is not available in release builds'};
     if (config.general?.module === 'auto_farm') {
       const accessError = autoFarmAccessError();
       if (accessError) return { success: false, error: accessError };
     }
     engine.replaceConfig(config);
     const started = engine.start();
-    if (started) getCubePvpService?.()?.start(config).catch(error => Logger.logClient(account, `Cube PvP start failed: ${error.message}`));
-    return started ? { success: true } : { success: false, error: 'Bot is already running' };
+    if (started) getCubePvpService?.()?.start(engine.config).catch(error => Logger.logClient(account, `Cube PvP start failed: ${error.message}`));
+    return started ? { success: true } : { success: false, error: config.general.module === 'custom_runs' ? 'Choose a Custom Run with at least one enabled valid step' : 'Bot is already running' };
   });
 
   ipcMain.handle('bot:pause', async () => {
@@ -295,7 +301,7 @@ function registerIpcHandlers(deps) {
     const engine = getBotEngine();
     if (!engine) return { success: false, error: 'Game session not active' };
     const resumed = engine.resume();
-    if (resumed) getCubePvpService?.()?.start(getConfigManager().getConfig()).catch(error => Logger.logClient(account, `Cube PvP resume failed: ${error.message}`));
+    if (resumed) getCubePvpService?.()?.start(engine.config).catch(error => Logger.logClient(account, `Cube PvP resume failed: ${error.message}`));
     return resumed ? { success: true } : { success: false, error: 'Bot is not paused' };
   });
 
@@ -333,45 +339,54 @@ function registerIpcHandlers(deps) {
     return { success: true, changed, config: saved };
   });
 
+  ipcMain.handle('bot:reset-usage-counter', (event,key) => {
+    const engine=getBotEngine();if(!engine||!getActiveAccount())return {success:false,error:'Sign in first'};
+    if(engine.isRunning&&!engine.isPaused)return {success:false,error:'Pause the bot before resetting a safety counter'};
+    const allowed=['deaths','healthPotionsUsed','staminaPotionsUsed.small','staminaPotionsUsed.large','staminaPotionsUsed.full','staminaPotionsUsed.adventure','manaPotionsUsed.small','manaPotionsUsed.large'];
+    if(!allowed.includes(key))return {success:false,error:'Unknown counter'};
+    const [group,type]=key.split('.');if(type)engine.stats[group][type]=0;else engine.stats[group]=0;
+    const telemetry=engine.getTelemetry();engine.emit('telemetry',telemetry);
+    return {success:true,telemetry};
+  });
+  const crystalResult = async action => {
+    const account = getActiveAccount();
+    const service = getPowerCrystalService?.();
+    if (!account || !service) return { success: false, error: 'Game session not active' };
+    try {
+      const result = await action(service);
+      if (getActiveAccount() !== account || getPowerCrystalService?.() !== service) {
+        return { success: false, error: 'The active account changed before this request completed' };
+      }
+      return { success: true, ...result };
+    } catch (error) {
+      Logger.logClient(account, `Power Crystals: ${error.message}`);
+      return { success: false, error: error.message, code: error.code || null };
+    }
+  };
+
+  ipcMain.handle('combat:get-power-crystals', () => crystalResult(service => service.read()));
+  ipcMain.handle('combat:capture-crystal-routing', (event, request = {}) => {
+    const engine = getBotEngine();
+    const allowLearning = () => getBotEngine() === engine
+      && !(engine?.isRunning === true && engine?.isPaused !== true);
+    return crystalResult(service => service.captureRouting(String(request.sourceSelection || 'default'), {
+      dryRun: getConfigManager().getConfig().safety.dryRun,
+      allowLearning,
+    }));
+  });
+  ipcMain.handle('app:get-features',()=>({soloPvp:false}));
   ipcMain.handle('bot:get-config', () => getConfigManager().getConfig());
 
   ipcMain.handle('bot:apply-config', async () => {
     const account = getActiveAccount();
     const engine = getBotEngine();
     if (!engine || !account) return { success: false, error: 'Game session not active' };
-    const wasRunning = engine.isRunning === true;
-    const wasPaused = engine.isPaused === true;
-    let stoppedForApply = false;
-    try {
-      const config = getConfigManager().getConfig();
-      if (config.general?.module === 'auto_farm') {
-        const accessError = autoFarmAccessError();
-        if (accessError) return { success: false, error: accessError };
-      }
-      if (wasRunning && !wasPaused) {
-        await engine.stopAndWait();
-        stoppedForApply = true;
-        await getCubePvpService?.()?.stop();
-      }
-      engine.replaceConfig(config, { preserveProgressionSnapshot: true });
-      const loadouts = await engine.applyConfiguredPveLoadouts();
-      if (wasRunning && !wasPaused && !engine.start({ preserveProgressionSnapshot: true })) {
-        throw new Error('The bot could not restart after applying its configuration');
-      }
-      if (wasRunning && !wasPaused) await getCubePvpService?.()?.start(config);
-      Logger.logUser(account, `Applied pending configuration${wasRunning && !wasPaused ? ' and restarted the bot' : ''}`);
-      return { success: true, restarted: wasRunning && !wasPaused, paused: wasPaused, loadouts };
-    } catch (error) {
-      if (stoppedForApply && !engine.isRunning) {
-        try {
-          engine.start();
-          await getCubePvpService?.()?.start(getConfigManager().getConfig());
-        } catch (restartError) {
-          Logger.logClient(account, `[WARN] Bot restart after failed Apply also failed: ${restartError.message}`);
-        }
-      }
-      return { success: false, error: `Could not apply configuration: ${error.message}` };
-    }
+    const result = await applyPendingConfiguration({
+      engine, config: getConfigManager().getConfig(), getConfig: () => getConfigManager().getConfig(), cubeService: getCubePvpService?.(),
+      validate: config => config.general?.module === 'auto_farm' ? autoFarmAccessError() : null,
+    });
+    if (result.success) Logger.logUser(account, 'Applied pending configuration' + (result.restarted ? ' and restarted the bot' : ''));
+    return result;
   });
 
   ipcMain.handle('auto-farm:get-state', async (event, options = {}) => {
@@ -419,16 +434,25 @@ function registerIpcHandlers(deps) {
       if (Array.isArray(result.availableMonsterKeys)) {
         const allowed = new Set(result.availableMonsterKeys);
         const maps = JSON.parse(JSON.stringify(config.autoFarm?.maps || {}));
+        const targetPolicies = { ...(config.autoFarm?.targetPolicies || {}) };
+        for (const target of result.addedTargets || []) {
+          targetPolicies[String(target.monsterId)] = {
+            monsterName: target.monsterName, areaKey,
+            enabled: target.enabled === true, damageMode: target.damageMode,
+            minDamage: target.minDamage, maxStack: target.maxStack,
+          };
+        }
         maps[areaKey] = Object.fromEntries(Object.entries(maps[areaKey] || {}).filter(([monsterKey, entry]) => (
           allowed.has(monsterTypeKey(entry?.name || monsterKey))
-        )));
+        )).map(([key, entry]) => [key, { ...entry, enabled: false }]));
         getConfigManager().replace({
           ...config,
-          autoFarm: { ...(config.autoFarm || {}), maps },
+          autoFarm: { ...(config.autoFarm || {}), maps, targetPolicies },
         });
       }
       const discarded = result.discarded?.length ? `; removed ${result.discarded.length} stale cross-area row(s)` : '';
       Logger.logUser(getActiveAccount(), `Added ${result.added} Auto Farm target(s) from ${areaKey}${discarded}`);
+      result.config = getConfigManager().getConfig();
       return result;
     } catch (error) {
       Logger.logClient(getActiveAccount(), `Auto Farm target add failed: ${error.message}`);
@@ -470,11 +494,15 @@ function registerIpcHandlers(deps) {
     });
     if (result.canceled || !result.filePath) return { success: false, canceled: true };
     try {
+      const portableConfig = getConfigManager().getConfig();
+      // Crystal/equipment instance IDs are account-owned server identifiers.
+      // Portable presets must never authorize them on another account.
+      delete portableConfig.powerCrystals;
       const payload = {
         format: 'veybot-config',
         version: 1,
         exportedAt: new Date().toISOString(),
-        config: getConfigManager().getConfig(),
+        config: portableConfig,
       };
       fs.writeFileSync(result.filePath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
       Logger.logUser(getActiveAccount(), `Saved configuration preset: ${path.basename(result.filePath)}`);
@@ -514,7 +542,10 @@ function registerIpcHandlers(deps) {
       if (!imported || typeof imported !== 'object' || Array.isArray(imported)) {
         return { success: false, error: 'Configuration payload is missing' };
       }
-      const config = getConfigManager().replace(imported);
+      // Preserve the signed-in account's Crystal identities even when an old
+      // or hand-edited portable preset contains a powerCrystals key.
+      const safeImport = { ...imported, powerCrystals: getConfigManager().getConfig().powerCrystals };
+      const config = getConfigManager().replace(safeImport);
       Logger.logUser(getActiveAccount(), `Loaded configuration preset: ${path.basename(filePath)}`);
       return { success: true, fileName: path.basename(filePath), config };
     } catch (error) {
@@ -700,6 +731,38 @@ function registerIpcHandlers(deps) {
     try {
       const config = getConfigManager().selectProgressionProfile(profileId);
       return { success: true, config };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('combat:create-profile', (event, request = {}) => {
+    try {
+      return { success: true, config: getConfigManager().createCombatProfile(request.name) };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('combat:rename-profile', (event, request = {}) => {
+    try {
+      return { success: true, config: getConfigManager().renameCombatProfile(request.profileId, request.name) };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('combat:delete-profile', (event, profileId) => {
+    try {
+      return { success: true, config: getConfigManager().deleteCombatProfile(profileId) };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('combat:select-profile', (event, profileId) => {
+    try {
+      return { success: true, config: getConfigManager().selectCombatProfile(profileId) };
     } catch (error) {
       return { success: false, error: error.message };
     }
@@ -1145,13 +1208,16 @@ function registerIpcHandlers(deps) {
   ipcMain.handle('manga:farm-settings:save', (event, settings, accountName) => {
     const ownership = activeAccountRequest(accountName);
     if (ownership.error) return { success: false, error: ownership.error };
-    mangaManager.saveAccountFarmSettings(ownership.account, settings);
-    return { success: true };
+    const saved = getConfigManager().update({ energyFarming: {
+      enabled: settings.module === 'automatic', reactionType: settings.reactionType,
+      chapterSettings: settings,
+    } });
+    return { success: true, config: saved };
   });
 
   ipcMain.handle('manga:farm-settings:get', (event, accountName) => {
     const ownership = activeAccountRequest(accountName);
-    return ownership.error ? {} : mangaManager.getAccountFarmSettings(ownership.account);
+    return ownership.error ? {} : projectChapterSettings(getConfigManager().getConfig());
   });
 
   ipcMain.handle('manga:reload', async (event, accountName) => {
@@ -1205,7 +1271,7 @@ function registerIpcHandlers(deps) {
       return { success: false, message: 'All known chapters for this manga were already farmed' };
     }
     const reaction = getConfigManager().getConfig().energyFarming.reactionType;
-    const farmSettings = mangaManager.getAccountFarmSettings(account);
+    const farmSettings = projectChapterSettings(getConfigManager().getConfig());
     const independentDelay = farmSettings.configMode === 'independent'
       ? Math.max(0, Number.parseFloat(String(farmSettings.delay || '1')) * 1000)
       : null;
@@ -1264,6 +1330,7 @@ function registerIpcHandlers(deps) {
         farmedEnergy: Math.min(1000, farmedEnergy + staminaGained),
       });
       mangaManager.incrementFarmedCount(account, targetManga, chapter);
+      windowManager.sendToMain('energy:progress',{type:'recorded',targetManga,chapter});
       getActivityHistoryStore?.()?.recordEvent?.(account, 'chapter_farm', {
         manga: targetManga,
         chapter,
@@ -1305,6 +1372,8 @@ function registerIpcHandlers(deps) {
       return { success: false, message: 'Invalid chapter request' };
     }
     const account = getActiveAccount();
+    const manga=mangaManager.getAccountMangaList(account).find(item=>item.slug===slug);
+    if((manga?.farmedChapterNumbers||[]).map(Number).includes(Number(chapterNum)))return {success:false,duplicate:true,message:'This chapter was already processed for this account'};
     Logger.logUser(account, `Triggered reaction farm for ${slug} Ch.${chapterNum}`);
     const result = await chapterFarmer.farmSingleChapter(account, slug, chapterNum, reactionType);
     if (result.success) {

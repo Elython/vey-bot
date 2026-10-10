@@ -36,6 +36,7 @@ const subviewHomeEquipment = document.getElementById('subviewHomeEquipment');
 const subviewHomeBot = document.getElementById('subviewHomeBot');
 const selectGeneralModule = document.getElementById('selectGeneralModule');
 const selectProgressionProfileSetup = document.getElementById('selectProgressionProfileSetup');
+const selectCombatProfileSetup = document.getElementById('selectCombatProfileSetup');
 const selectGeneralMap = document.getElementById('selectGeneralMap');
 const selectGeneralDungeonMap = document.getElementById('selectGeneralDungeonMap');
 const selectGeneralGateMap = document.getElementById('selectGeneralGateMap');
@@ -84,6 +85,7 @@ const btnDeleteProgressionProfile = document.getElementById('btnDeleteProgressio
 const battlePassStatus = document.getElementById('battlePassStatus');
 const battlePassCounters = document.getElementById('battlePassCounters');
 const btnRefreshBattlePass = document.getElementById('btnRefreshBattlePass');
+const btnRefreshBattlePassTargets = document.getElementById('btnRefreshBattlePassTargets');
 const chkBattlePassEnabled = document.getElementById('chkBattlePassEnabled');
 const selectBattlePassArea = document.getElementById('selectBattlePassArea');
 const chkBattlePassLootIfAchievable = document.getElementById('chkBattlePassLootIfAchievable');
@@ -99,6 +101,7 @@ const btnRefreshAdventureQuests = document.getElementById('btnRefreshAdventureQu
 const bossHuntContent = document.getElementById('bossHuntContent');
 const bossHuntStatus = document.getElementById('bossHuntStatus');
 const btnRefreshBossHunt = document.getElementById('btnRefreshBossHunt');
+const inputBossHuntSearch = document.getElementById('inputBossHuntSearch');
 // The old duplicate available-loot view was replaced by the shared Lootable
 // workspace and persistent Progression history.
 const btnRefreshAvailableLoot = null;
@@ -221,12 +224,21 @@ const monsterPhasePvpStatus = document.getElementById('monsterPhasePvpStatus');
 const monsterPhasePvpOpponent = document.getElementById('monsterPhasePvpOpponent');
 const monsterPhasePvpActiveId = document.getElementById('monsterPhasePvpActiveId');
 const monsterPhasePvpWatcher = document.getElementById('monsterPhasePvpWatcher');
+const selectCombatProfile = document.getElementById('selectCombatProfile');
+const inputCombatProfileName = document.getElementById('inputCombatProfileName');
+const btnCreateCombatProfile = document.getElementById('btnCreateCombatProfile');
+const btnRenameCombatProfile = document.getElementById('btnRenameCombatProfile');
+const btnDeleteCombatProfile = document.getElementById('btnDeleteCombatProfile');
+const chkEnableCrystalRouting = document.getElementById('chkEnableCrystalRouting');
 const selectGearPve = document.getElementById('selectGearPve');
 const selectPetsPve = document.getElementById('selectPetsPve');
 const selectAttackMode = document.getElementById('selectAttackMode');
 const selectFixedAttack = document.getElementById('selectFixedAttack');
 const selectMaxAttack = document.getElementById('selectMaxAttack');
 const inputAttackOvershoot = document.getElementById('inputAttackOvershoot');
+const chkAvoidArtemisCurse = document.getElementById('chkAvoidArtemisCurse');
+const selectArtemisCurseHit = document.getElementById('selectArtemisCurseHit');
+const rowArtemisCurseHit = document.getElementById('rowArtemisCurseHit');
 const chkAllowClassAbilities = document.getElementById('chkAllowClassAbilities');
 const rowFixedAttack = document.getElementById('rowFixedAttack');
 const rowAdaptiveMax = document.getElementById('rowAdaptiveMax');
@@ -353,7 +365,6 @@ if (viewAutoFarm) viewAutoFarm.append(subviewHomeAutoFarm, subviewTargetsAutoFar
 const monsterStatsView = window.MonsterStatsView ? new window.MonsterStatsView(window.botAPI) : null;
 
 // Developer Mode Checkbox
-const chkDevMode = document.getElementById('chkDevMode');
 
 // Log-file Subtabs
 const subtabConsoleUserBtn = document.getElementById('subtabConsoleUserBtn');

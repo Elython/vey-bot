@@ -31,11 +31,10 @@ class GameController {
       battleRef.endpoints?.LOOT === 'dungeon_loot.php'
     );
     const profile = isDungeon ? delay?.dungeon : delay?.gate;
-    // Gates have a verified one-second server limit and use the user's requested
-    // 0.05-second safety margin. Dungeons have no observed server limit; their
-    // small floor only prevents an accidental literal zero-delay loop.
+    // Gates retain their 1.05-second margin; publish retains a one-second Dungeon attack floor.
+    // Join and healing retain their existing independently configured pacing.
     await this.timing.waitForAction(signal, {
-      minimumIntervalMs: isDungeon ? 10 : 1050,
+      minimumIntervalMs: isDungeon ? 1000 : 1050,
       minDelayMs: profile?.minDelay,
       maxDelayMs: profile?.maxDelay,
     });
@@ -104,6 +103,18 @@ class GameController {
   async useManaPotion(inventoryId, quantity = 1, signal = null) {
     await this.timing.waitForAction(signal);
     return this.gameAPI.useManaPotion(inventoryId, quantity);
+  }
+
+  async equipPowerCrystal(params, signal = null) {
+    try { await this.timing.waitForAction(signal); }
+    catch (error) { error.notSubmitted = true; throw error; }
+    return this.gameAPI.equipPowerCrystal(params);
+  }
+
+  async unequipPowerCrystal(params, signal = null) {
+    try { await this.timing.waitForAction(signal); }
+    catch (error) { error.notSubmitted = true; throw error; }
+    return this.gameAPI.unequipPowerCrystal(params);
   }
 
   async applyQuickSet(params, signal = null) {

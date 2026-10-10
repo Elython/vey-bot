@@ -139,11 +139,11 @@ class CubePvPService extends EventEmitter {
     this.readCoordinator = readCoordinator;
     this.worldStateService = worldStateService || readCoordinator?.worldStateService || null;
     this.mode = mode;
-    if (!['shared', 'legacy'].includes(this.mode)) throw new Error(`Unsupported Cube PvP mode: ${this.mode}`);
-    if (this.mode === 'shared' && (!readCoordinator || !areaDirectoryService)) {
+    if (this.mode !== 'shared') throw new Error(`Unsupported Cube PvP mode: ${this.mode}`);
+    if (!readCoordinator || !areaDirectoryService) {
       throw new TypeError('Shared Cube PvP requires ReadCoordinator and AreaDirectoryService');
     }
-    this.accountKey = this.mode === 'shared' ? assertAccountKey(accountKey) : null;
+    this.accountKey = assertAccountKey(accountKey);
     this.accountRef = this.accountKey || this.accountName;
     this.now = now;
     this.uiMaxAgeMs = Math.max(0, Number(uiMaxAgeMs) || 0);
@@ -258,7 +258,6 @@ class CubePvPService extends EventEmitter {
       if (!directoryEntry) throw new Error('The Polyhedral Crucible is not available');
     }
     throwIfAborted(signal);
-    if (this.mode === 'legacy') return this._readRawObservation(directoryEntry, signal);
     if (!directoryEntry) throw new Error('Shared Cube PvP requires the shared Cube directory');
     const resourceKey = cubeResourceKey(directoryEntry.instanceId);
     this.worldStateService?.prune?.(this.accountKey, (_value, identity) => (
@@ -412,7 +411,7 @@ class CubePvPService extends EventEmitter {
   }
 
   invalidate(instanceId, reason = 'Cube PvP observation invalidated') {
-    if (this.mode !== 'shared' || !instanceId) return false;
+    if (!instanceId) return false;
     return this.readCoordinator.invalidate(this.accountKey, WorldDomain.CUBE, cubeResourceKey(instanceId), reason);
   }
 

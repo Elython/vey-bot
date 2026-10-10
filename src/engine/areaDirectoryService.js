@@ -106,7 +106,7 @@ function normalizeDirectoryObservation(instances = [], metadata = {}) {
       : 'unknown';
     const active = state === AreaInstanceState.ACTIVE;
     const lootDiscoverable = active
-      || (state === AreaInstanceState.CLEARED && guildLootState === 'pending')
+      || state === AreaInstanceState.CLEARED
       || state === AreaInstanceState.FAILED;
     const entry = {
       areaInstanceKey: buildAreaInstanceKey({ areaKey: area.key, instanceId }),
@@ -150,11 +150,11 @@ class AreaDirectoryService {
       && typeof gameAPI.getDungeonInstances !== 'function')) {
       throw new TypeError('AreaDirectoryService requires GameAPI dungeon discovery');
     }
-    if (!['shared', 'legacy'].includes(mode)) throw new Error(`Unsupported area-directory mode: ${mode}`);
-    if (mode === 'shared' && (!readCoordinator || typeof readCoordinator.read !== 'function')) {
+    if (mode !== 'shared') throw new Error(`Unsupported area-directory mode: ${mode}`);
+    if (!readCoordinator || typeof readCoordinator.read !== 'function') {
       throw new TypeError('Shared area directory requires ReadCoordinator');
     }
-    if (mode === 'shared' && typeof gameAPI.getDungeonDirectory !== 'function') {
+    if (typeof gameAPI.getDungeonDirectory !== 'function') {
       throw new TypeError('Shared area directory requires GameAPI.getDungeonDirectory');
     }
     this.gameAPI = gameAPI;
@@ -165,14 +165,11 @@ class AreaDirectoryService {
     this.uiMaxAgeMs = Math.max(0, Number(uiMaxAgeMs) || 0);
     this.backgroundMaxAgeMs = Math.max(0, Number(backgroundMaxAgeMs) || 0);
     this.sourceRevision = 0;
-    this.legacyValue = null;
   }
 
   async _discover(signal = null) {
     throwIfAborted(signal);
-    const directory = this.mode === 'legacy' && typeof this.gameAPI.getDungeonDirectory !== 'function'
-      ? { recognized: true, guildMember: true, reason: null, instances: await this.gameAPI.getDungeonInstances() }
-      : await this.gameAPI.getDungeonDirectory();
+    const directory = await this.gameAPI.getDungeonDirectory();
     throwIfAborted(signal);
     return normalizeDirectoryObservation(directory.instances, directory);
   }
@@ -198,11 +195,7 @@ class AreaDirectoryService {
     force = false,
     signal = null,
   } = {}) {
-    if (this.mode === 'legacy') {
-      const value = await this._discover(signal);
-      this.legacyValue = clone(value);
-      return clone(value);
-    }
+
     const snapshot = await this.readCoordinator.read({
       accountKey: this.accountKey,
       domain: WorldDomain.AREA_INSTANCES,
@@ -216,7 +209,6 @@ class AreaDirectoryService {
   }
 
   peekDirectory() {
-    if (this.mode === 'legacy') return clone(this.legacyValue);
     const snapshot = this.readCoordinator.peek(this.accountKey, WorldDomain.AREA_INSTANCES, DIRECTORY_RESOURCE_KEY);
     return directoryProjection(snapshot?.value);
   }
@@ -229,10 +221,6 @@ class AreaDirectoryService {
   }
 
   invalidate(reason = 'area directory invalidated') {
-    if (this.mode !== 'shared') {
-      this.legacyValue = null;
-      return false;
-    }
     return this.readCoordinator.invalidate(
       this.accountKey,
       WorldDomain.AREA_INSTANCES,

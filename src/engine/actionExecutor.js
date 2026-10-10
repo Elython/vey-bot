@@ -1,6 +1,16 @@
 const MUTATING_ACTIONS = new Set(['JOIN', 'ATTACK', 'LOOT', 'CLAIM_LOOT', 'CLAIM_OBJECTIVE_LOOT', 'ADV_QUEST_ACCEPT', 'ADV_QUEST_FINISH', 'ADV_QUEST_GIVE_UP', 'HEAL', 'FARM', 'APPLY_LOADOUT', 'USE_STAMINA_POTION', 'USE_MANA_POTION', 'AUTO_FARM_START', 'CUBE_PVP_JOIN', 'MONSTER_PHASE_DUEL']);
 const KNOWN_ACTIONS = new Set([...MUTATING_ACTIONS, 'SCAN', 'CUBE_SCAN', 'WAIT', 'STOP']);
+for (const action of ['SOLO_PVP_JOIN', 'SOLO_PVP_CONTROL', 'SOLO_PVP_SKILL', 'SOLO_PVP_SURRENDER', 'POWER_CRYSTAL_EQUIP', 'POWER_CRYSTAL_UNEQUIP']) { MUTATING_ACTIONS.add(action); KNOWN_ACTIONS.add(action); }
 const ACTION_PARAM_VALIDATORS = Object.freeze({
+  SOLO_PVP_JOIN: () => true,
+  SOLO_PVP_CONTROL: params => /^\d{1,16}$/.test(String(params.matchId || '')) && ['auto', 'normal'].includes(params.mode),
+  SOLO_PVP_SKILL: params => /^\d{1,16}$/.test(String(params.matchId || '')) && /^-?\d{1,8}$/.test(String(params.skillId)) && /^(?:ally|enemy):\d+$/.test(String(params.targetKey || '')) && Number.isInteger(params.expectedTurn) && params.expectedTurn > 0,
+  SOLO_PVP_SURRENDER: params => /^\d{1,16}$/.test(String(params.matchId || '')),
+  POWER_CRYSTAL_EQUIP: params => /^\d{1,30}$/.test(String(params.crystalId || ''))
+    && /^\d{1,30}$/.test(String(params.equipmentRef || ''))
+    && /^[a-f0-9]{64}$/i.test(String(params.intent || '')),
+  POWER_CRYSTAL_UNEQUIP: params => /^\d{1,30}$/.test(String(params.crystalId || ''))
+    && /^[a-f0-9]{64}$/i.test(String(params.intent || '')),
   JOIN: () => true,
   LOOT: () => true,
   CLAIM_LOOT: params => params.claim && typeof params.claim === 'object'

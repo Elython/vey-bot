@@ -5,7 +5,7 @@ function createMonsterSetSelect(value, label) {
   for (let setNumber = 0; setNumber <= 10; setNumber += 1) {
     const option = document.createElement('option');
     option.value = setNumber === 0 ? 'default' : `quick_set_${setNumber}`;
-    option.textContent = setNumber === 0 ? 'Default' : `Quick Set ${setNumber}`;
+    option.textContent = setNumber === 0 ? uiText('Default') : uiText("Quick Set {0}", setNumber);
     select.appendChild(option);
   }
   select.value = value || 'default';
@@ -17,12 +17,12 @@ function createStaminaPotionSelect(value, label) {
   select.className = 'monster-potion-select';
   select.setAttribute('aria-label', label);
   for (const [optionValue, optionLabel] of [
-    ['none', 'None'],
-    ['auto', 'Auto'],
-    ['small', 'Small Pot'],
-    ['large', 'Large Pot'],
-    ['full', 'Full Pot'],
-    ['adventure', 'Adventure Pot'],
+    ['none', uiText('None')],
+    ['auto', uiText('Auto')],
+    ['small', uiText('Small Pot')],
+    ['large', uiText('Large Pot')],
+    ['full', uiText('Full Pot')],
+    ['adventure', uiText('Adventure Pot')],
   ]) {
     const option = document.createElement('option');
     option.value = optionValue;
@@ -91,16 +91,16 @@ function renderActivityConsole(kind, entries = []) {
     }
     return `[${time}] ${entry.monsterName || 'Unknown'} · ${formatNumber(entry.xp || 0)} XP · ${formatNumber(entry.gold || 0)} gold · ${formatNumber(entry.stackSize || 1)} loot`;
   });
-  consoleElement.textContent = rows.length ? rows.join('\n') : (kind === 'target' ? 'No attacks recorded.' : 'No loot recorded.');
+  consoleElement.textContent = rows.length ? rows.join('\n') : (kind === 'target' ? uiText('No attacks recorded.') : uiText('No loot recorded.'));
 }
 
 function historyOpenButton(pageUrl) {
   const open = document.createElement('button');
   open.type = 'button';
   open.className = 'btn btn-sm activity-history-open';
-  open.textContent = 'Open';
+  open.textContent = uiText('Open');
   open.disabled = !pageUrl;
-  open.title = pageUrl ? 'Open this battle in the client browser' : 'Battle page is unavailable';
+  open.title = pageUrl ? uiText('Open this battle in the client browser') : uiText('Battle page is unavailable');
   open.addEventListener('click', async event => {
     event.stopPropagation();
     const result = await window.botAPI.openBattleInBrowser(pageUrl);
@@ -111,21 +111,21 @@ function historyOpenButton(pageUrl) {
 
 function showLootRewards(entry = {}) {
   if (!modalLootRewards || !lootRewardsContent) return;
-  if (lootRewardsTitle) lootRewardsTitle.textContent = `${entry.monsterName || 'Monster'} Rewards`;
-  if (lootRewardsSummary) lootRewardsSummary.textContent = `${formatNumber(entry.xp || 0)} XP · ${formatNumber(entry.gold || 0)} gold · ${formatNumber(entry.stackSize || 1)} loot`;
+  if (lootRewardsTitle) lootRewardsTitle.textContent = uiText("{0} Rewards", entry.monsterName || 'Monster');
+  if (lootRewardsSummary) lootRewardsSummary.textContent = uiText("{0} XP · {1} gold · {2} loot", formatNumber(entry.xp || 0), formatNumber(entry.gold || 0), formatNumber(entry.stackSize || 1));
   const items = Array.isArray(entry.items) ? entry.items : [];
   if (items.length === 0) {
     const empty = document.createElement('div'); empty.className = 'empty-state';
     empty.textContent = Number(entry.itemsCount) > 0
-      ? 'This older record kept the item count but not the item details.'
-      : 'No item drops were recorded for this claim.';
+      ? uiText('This older record kept the item count but not the item details.')
+      : uiText('No item drops were recorded for this claim.');
     lootRewardsContent.replaceChildren(empty);
   } else {
     lootRewardsContent.replaceChildren(...items.map(item => {
       const row = document.createElement('div'); row.className = 'loot-reward-row';
-      const name = document.createElement('strong'); name.textContent = item.name || 'Unknown item';
+      const name = document.createElement('strong'); name.textContent = item.name || uiText('Unknown item');
       const details = document.createElement('span');
-      details.textContent = `x${formatNumber(item.quantity || 1)}${item.tier ? ` · ${item.tier}` : ''}${item.itemId ? ` · ID ${item.itemId}` : ''}`;
+      details.textContent = uiText("x{0}{1}{2}", formatNumber(item.quantity || 1), item.tier ? ` · ${item.tier}` : '', item.itemId ? ` · ID ${item.itemId}` : '');
       row.append(name, details); return row;
     }));
   }
@@ -137,8 +137,8 @@ function historyRewardsButton(entry) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'btn btn-sm activity-history-rewards';
-  button.textContent = 'Loot';
-  button.title = 'Show the EXP, Gold, and items returned by this loot claim';
+  button.textContent = uiText('Loot');
+  button.title = uiText('Show the EXP, Gold, and items returned by this loot claim');
   button.addEventListener('click', event => { event.stopPropagation(); showLootRewards(entry); });
   return button;
 }
@@ -148,7 +148,7 @@ function buildActivityHistoryTable(kind, entries) {
   table.className = `activity-history-table activity-history-${kind}`;
   const header = document.createElement('div');
   header.className = 'activity-history-row activity-history-header';
-  for (const label of kind === 'target' ? ['Server time', 'Damage', 'ST'] : ['Server time', 'Loot', 'XP', 'Gold', 'ID', 'Loot', 'Page']) {
+  for (const label of kind === 'target' ? [uiText('Server time'), uiText('Damage'), uiText('ST')] : [uiText('Server time'), uiText('Loot'), uiText('XP'), uiText('Gold'), uiText('ID'), uiText('Loot'), uiText('Page')]) {
     const cell = document.createElement('span'); cell.textContent = label; header.append(cell);
   }
   table.append(header);
@@ -166,7 +166,7 @@ function buildActivityHistoryTable(kind, entries) {
     id.textContent = entry.instanceId
       ? `${entry.monsterId} / ${entry.instanceId}`
       : (entry.monsterId || '—');
-    id.title = entry.instanceId ? 'Monster ID / Dungeon instance ID' : 'Monster ID';
+    id.title = entry.instanceId ? uiText('Monster ID / Dungeon instance ID') : uiText('Monster ID');
     row.title = entry.result || entry.actionName || '';
     row.append(time, first, second);
     if (kind !== 'target') row.append(third, id, historyRewardsButton(entry), historyOpenButton(entry.pageUrl));
@@ -181,7 +181,7 @@ function targetHistoryIdentity(entry = {}) {
   return {
     key: `${monsterId}\u0000${instanceId}`,
     displayId: instanceId ? `${monsterId} / ${instanceId}` : monsterId,
-    title: instanceId ? 'Monster ID / Dungeon instance ID' : 'Monster ID',
+    title: instanceId ? uiText('Monster ID / Dungeon instance ID') : uiText('Monster ID'),
   };
 }
 
@@ -195,8 +195,8 @@ function renderActivityHistory(kind, payload = {}, container = null) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
     empty.textContent = kind === 'target'
-      ? 'No attacks recorded for this account.'
-      : 'No loot recorded for this account.';
+      ? uiText('No attacks recorded for this account.')
+      : uiText('No loot recorded for this account.');
     container.replaceChildren(empty);
     return;
   }
@@ -218,14 +218,10 @@ function renderActivityHistory(kind, payload = {}, container = null) {
     if (!hasDetails) heading.className = 'activity-history-summary-only';
     const boss = summary.boss ? 'Boss · ' : '';
     heading.textContent = kind === 'target'
-      ? `${boss}${summary.monsterName || 'Unknown'}  ${formatNumber(summary.attacks || 0)} attacks | ${formatNumber(summary.completedTargets || 0)} reached | ${formatNumber(summary.totalStamina || 0)} ST`
-      : `${boss}${summary.monsterName || 'Unknown'}  ${formatNumber(summary.claims || 0)} claims | ${formatNumber(summary.lootCount || 0)} loot | ${formatNumber(summary.totalXp || 0)} XP | ${formatNumber(summary.totalGold || 0)} gold`;
+      ? uiText("{0}{1}  {2} attacks | {3} reached | {4} ST", boss, summary.monsterName || 'Unknown', formatNumber(summary.attacks || 0), formatNumber(summary.completedTargets || 0), formatNumber(summary.totalStamina || 0))
+      : uiText("{0}{1}  {2} claims | {3} loot | {4} XP | {5} gold", boss, summary.monsterName || 'Unknown', formatNumber(summary.claims || 0), formatNumber(summary.lootCount || 0), formatNumber(summary.totalXp || 0), formatNumber(summary.totalGold || 0));
     group.append(heading);
     if (!hasDetails) {
-      const unavailable = document.createElement('div');
-      unavailable.className = 'empty-state activity-history-details-unavailable';
-      unavailable.textContent = 'Detailed records are no longer retained for this summary.';
-      group.append(unavailable);
       wrapper.append(group);
       continue;
     }
@@ -250,7 +246,7 @@ function renderActivityHistory(kind, payload = {}, container = null) {
         id.title = instance.title;
         const stamina = instance.entries.reduce((total, entry) => total + Math.max(0, Number(entry.staminaSpent) || 0), 0);
         const reached = instance.entries.some(entry => entry.completed === true);
-        summaryText.textContent = `${formatNumber(instance.entries.length)} attacks | ${formatNumber(stamina)} ST${reached ? ' | Reached' : ''}`;
+        summaryText.textContent = uiText("{0} attacks | {1} ST{2}", formatNumber(instance.entries.length), formatNumber(stamina), reached ? ' | Reached' : '');
         summaryActions.append(id, historyOpenButton(instance.entries[0]?.pageUrl));
         instanceSummary.append(summaryText, summaryActions);
         if (reached) disclosure.classList.add('activity-history-instance-completed');
@@ -271,23 +267,23 @@ async function loadActivityHistory(kind, areaKey, container) {
   const button = kind === 'target' ? btnRefreshTargetHistory : btnRefreshProgressionHistory;
   const status = kind === 'target' ? targetHistoryStatus : null;
   setRefreshBusy(button, true);
-  setWorkspaceStatus(status, 'Loading…');
-  container.innerHTML = '<div class="empty-state">Loading history…</div>';
+  setWorkspaceStatus(status, uiText('Loading…'));
+  container.innerHTML = ("<div class=\"empty-state\">" + uiText("Loading history…") + "</div>");
   try {
     const result = await withUiTimeout(
       window.botAPI.getActivityHistory(kind, { limit: 250, areaKey }),
       20000,
-      kind === 'target' ? 'Target history' : 'Loot history',
+      kind === 'target' ? uiText('Target history') : uiText('Loot history'),
     );
     if (generation !== activityHistoryRequestGeneration[kind]) return;
-    if (!result?.success) throw new Error(result?.error || 'History is unavailable');
+    if (!result?.success) throw new Error(result?.error || uiText('History is unavailable'));
     renderActivityHistory(kind, result, container);
-    setWorkspaceStatus(status, `${result.entries?.length || 0} recent action(s) · ${result.summaries?.length || 0} monster type(s)`, 'success');
+    setWorkspaceStatus(status, uiText("{0} recent action(s) · {1} monster type(s)", result.entries?.length || 0, result.summaries?.length || 0), 'success');
   } catch (error) {
     if (generation !== activityHistoryRequestGeneration[kind]) return;
     const empty = document.createElement('div');
     empty.className = 'empty-state';
-    empty.textContent = error.message || 'History is unavailable';
+    empty.textContent = error.message || uiText('History is unavailable');
     container.replaceChildren(empty);
     setWorkspaceStatus(status, empty.textContent, 'error');
   } finally {
@@ -320,7 +316,7 @@ function scheduleVisibleActivityHistoryRefresh(action) {
     clearTimeout(targetHistoryLiveTimer);
     targetHistoryLiveTimer = setTimeout(refreshTargetHistory, 350);
   }
-  if (['LOOT', 'CLAIM_LOOT'].includes(action) && subviewProgressionLoot?.style.display !== 'none') {
+  if ([uiText('LOOT'), uiText('CLAIM_LOOT')].includes(action) && subviewProgressionLoot?.style.display !== 'none') {
     clearTimeout(progressionHistoryLiveTimer);
     progressionHistoryLiveTimer = setTimeout(refreshProgressionHistory, 350);
   }
@@ -353,18 +349,18 @@ function lootCandidateActionButton(candidate) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'btn btn-sm activity-history-open activity-history-loot-action';
-  button.textContent = 'Loot';
-  button.title = 'Claim this exact currently lootable monster';
+  button.textContent = uiText('Loot');
+  button.title = uiText('Claim this exact currently lootable monster');
   button.addEventListener('click', async () => {
     button.disabled = true;
     try {
       const areaKey = String(candidate.areaKey || lootableAreaSelect?.value || '');
       const result = await window.botAPI.claimDiscoveredLoot(areaKey, lootCandidateKey(candidate));
-      if (!result?.success) throw new Error(result?.error || 'Loot could not be claimed');
+      if (!result?.success) throw new Error(result?.error || uiText('Loot could not be claimed'));
       appendLog('INFO', `Looted ${candidate.name || candidate.monsterName || 'monster'} manually.`);
       setWorkspaceStatus(
         lootableHistoryStatus,
-        result.result?.pausedBot ? 'Loot claimed. Bot paused for the manual action.' : 'Loot claimed.',
+        result.result?.pausedBot ? uiText('Loot claimed. Bot paused for the manual action.') : uiText('Loot claimed.'),
         'success',
       );
       if (result.result?.warning) appendLog('WARN', result.result.warning);
@@ -384,8 +380,8 @@ function renderLootableSnapshot(snapshot) {
   if (candidates.length === 0) {
     const empty = document.createElement('div'); empty.className = 'empty-state';
     empty.textContent = (snapshot?.errors || []).length
-      ? `No readable loot found. ${scanErrorText(snapshot.errors[0])}`
-      : 'No unclaimed loot was found in this area.';
+      ? uiText("No readable loot found. {0}", scanErrorText(snapshot.errors[0]))
+      : uiText('No unclaimed loot was found in this area.');
     lootHistoryContent.replaceChildren(empty);
     return;
   }
@@ -401,22 +397,22 @@ function renderLootableSnapshot(snapshot) {
   for (const groupData of [...groups.values()].sort((a, b) => a.name.localeCompare(b.name))) {
     const group = document.createElement('details'); group.className = 'activity-history-group';
     const summary = document.createElement('summary');
-    summary.textContent = `${groupData.name}  ${groupData.entries.length} record(s) | ${groupData.stacks} loot`;
+    summary.textContent = uiText("{0}  {1} record(s) | {2} loot", groupData.name, groupData.entries.length, groupData.stacks);
     group.append(summary);
     const table = document.createElement('div'); table.className = 'activity-history-table lootable-history-table';
     const header = document.createElement('div'); header.className = 'activity-history-row activity-history-header';
-    for (const label of ['Monster', 'Stack', 'Damage', 'XP', 'ID', 'Loot', 'Page']) {
+    for (const label of [uiText('Monster'), uiText('Stack'), uiText('Damage'), uiText('XP'), uiText('ID'), uiText('Loot'), uiText('Page')]) {
       const cell = document.createElement('span'); cell.textContent = label; header.append(cell);
     }
     table.append(header);
     for (const candidate of groupData.entries) {
       const row = document.createElement('div'); row.className = 'activity-history-row';
-      const name = document.createElement('span'); name.textContent = candidate.name || candidate.monsterName || 'Unknown';
+      const name = document.createElement('span'); name.textContent = candidate.name || candidate.monsterName || uiText('Unknown');
       const stack = document.createElement('span'); stack.textContent = formatNumber(candidate.stackSize || 1);
       const damage = document.createElement('span'); damage.textContent = candidate.userDamage == null ? '—' : formatNumber(candidate.userDamage);
       const rate = document.createElement('span');
       rate.textContent = candidate.estimatedXp == null ? '—' : formatNumber(candidate.estimatedXp);
-      rate.title = candidate.expPerDamage == null ? 'Reward XP could not be verified' : `${candidate.expPerDamage} XP per damage`;
+      rate.title = candidate.expPerDamage == null ? uiText('Reward XP could not be verified') : uiText("{0} XP per damage", candidate.expPerDamage);
       const id = document.createElement('span'); id.className = 'activity-history-id'; id.textContent = candidate.instanceId ? `${candidate.id || candidate.dgmid} / ${candidate.instanceId}` : (candidate.id || candidate.battleId || '—');
       row.append(name, stack, damage, rate, id, lootCandidateActionButton(candidate), historyOpenButton(lootCandidatePageUrl(candidate)));
       table.append(row);
@@ -427,7 +423,7 @@ function renderLootableSnapshot(snapshot) {
     const details = document.createElement('details');
     details.className = 'scan-error-details';
     const summary = document.createElement('summary');
-    summary.textContent = `${snapshot.errors.length} source error${snapshot.errors.length === 1 ? '' : 's'}`;
+    summary.textContent = uiText("{0} source error{1}", snapshot.errors.length, snapshot.errors.length === 1 ? '' : 's');
     details.append(summary);
     for (const error of snapshot.errors) {
       const row = document.createElement('div'); row.className = 'scan-error-row'; row.textContent = scanErrorText(error); details.append(row);
@@ -443,22 +439,22 @@ async function refreshLootableArea(force = false) {
   if (!areaKey) return;
   const generation = ++lootableRequestGeneration;
   setRefreshBusy(btnRefreshLootHistory, true);
-  setWorkspaceStatus(lootableHistoryStatus, force ? 'Recalculating…' : 'Loading…');
-  lootHistoryContent.innerHTML = '<div class="empty-state">Loading lootable monsters…</div>';
+  setWorkspaceStatus(lootableHistoryStatus, force ? uiText('Recalculating…') : uiText('Loading…'));
+  lootHistoryContent.innerHTML = ("<div class=\"empty-state\">" + uiText("Loading lootable monsters…") + "</div>");
   try {
     const result = await withUiTimeout(
       force ? window.botAPI.refreshLootDiscovery(areaKey) : window.botAPI.listLootDiscovery(areaKey),
       30000,
-      'Lootable scan',
+      uiText('Lootable scan'),
     );
     if (generation !== lootableRequestGeneration || lootableAreaSelect?.value !== areaKey) return;
-    if (!result?.success) throw new Error(result?.error || 'Loot discovery is unavailable.');
+    if (!result?.success) throw new Error(result?.error || uiText('Loot discovery is unavailable.'));
     let snapshot = force ? result.snapshot : result.snapshots?.[0];
     if (!snapshot && !force) {
-      setWorkspaceStatus(lootableHistoryStatus, 'No cached scan · scanning now…');
-      const refreshed = await withUiTimeout(window.botAPI.refreshLootDiscovery(areaKey), 30000, 'Lootable scan');
+      setWorkspaceStatus(lootableHistoryStatus, uiText('No cached scan · scanning now…'));
+      const refreshed = await withUiTimeout(window.botAPI.refreshLootDiscovery(areaKey), 30000, uiText('Lootable scan'));
       if (generation !== lootableRequestGeneration || lootableAreaSelect?.value !== areaKey) return;
-      if (!refreshed?.success) throw new Error(refreshed?.error || 'Loot discovery is unavailable.');
+      if (!refreshed?.success) throw new Error(refreshed?.error || uiText('Loot discovery is unavailable.'));
       snapshot = refreshed.snapshot;
     }
     if (snapshot) lootDiscoveryCache.set(areaKey, snapshot);
@@ -467,14 +463,14 @@ async function refreshLootableArea(force = false) {
     const errors = snapshot?.errors?.length || 0;
     setWorkspaceStatus(
       lootableHistoryStatus,
-      `${snapshot?.candidates?.length || 0} loot action(s) · updated ${timestamp}${errors ? ` · ${errors} error(s)` : ''}`,
+      uiText("{0} loot action(s) · updated {1}{2}", snapshot?.candidates?.length || 0, timestamp, errors ? ` · ${errors} error(s)` : ''),
       errors ? 'error' : 'success',
     );
   } catch (error) {
     if (generation !== lootableRequestGeneration) return;
     const empty = document.createElement('div');
     empty.className = 'empty-state';
-    empty.textContent = error.message || 'Loot discovery is unavailable.';
+    empty.textContent = error.message || uiText('Loot discovery is unavailable.');
     lootHistoryContent.replaceChildren(empty);
     setWorkspaceStatus(lootableHistoryStatus, empty.textContent, 'error');
   } finally {

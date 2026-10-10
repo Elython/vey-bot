@@ -162,8 +162,8 @@ class StatsService {
     if (!gameAPI || typeof gameAPI.fetchStats !== 'function' || typeof gameAPI.fetchDashboard !== 'function') {
       throw new TypeError('StatsService requires GameAPI Stats and Dashboard readers');
     }
-    if (!['shared', 'legacy'].includes(mode)) throw new Error(`Unsupported Stats mode: ${mode}`);
-    if (mode === 'shared' && (!readCoordinator || !worldStateService || !areaAccessService)) {
+    if (mode !== 'shared') throw new Error(`Unsupported Stats mode: ${mode}`);
+    if (!readCoordinator || !worldStateService || !areaAccessService) {
       throw new TypeError('Shared Stats requires ReadCoordinator, WorldStateService, and AreaAccessService');
     }
     this.gameAPI = gameAPI;
@@ -176,13 +176,11 @@ class StatsService {
     this.mode = mode;
     this.now = now;
     this.sourceRevision = 0;
-    this.unsubscribe = mode === 'shared'
-      ? worldStateService.subscribe(this.accountKey, event => {
+    this.unsubscribe = worldStateService.subscribe(this.accountKey, event => {
         if (event.changes.some(change => change.domain === WorldDomain.STATS && change.operation !== 'invalidate')) {
           projectStatsToStateStore(event.snapshot.stats, this.stateStore);
         }
-      }, { domains: [WorldDomain.STATS] })
-      : null;
+      }, { domains: [WorldDomain.STATS] });
   }
 
   async _readSources(signal = null) {
@@ -190,9 +188,7 @@ class StatsService {
     const sourceRevision = ++this.sourceRevision;
     throwIfAborted(signal);
     const resourcesRead = (async () => {
-      const route = this.areaAccessService
-        ? await this.areaAccessService.getPlayerResourceRoute()
-        : this.mode === 'legacy' ? { gateId: 3, wave: 5 } : null;
+      const route = await this.areaAccessService.getPlayerResourceRoute();
       if (!route) return {};
       return this.gameAPI.fetchPlayerResources(route.gateId, route.wave);
     })();
@@ -237,11 +233,7 @@ class StatsService {
     force = false,
     signal = null,
   } = {}) {
-    if (this.mode === 'legacy') {
-      const { observation } = await this._readSources(signal);
-      projectStatsToStateStore(observation, this.stateStore);
-      return { value: clone(observation), meta: null, revision: null };
-    }
+
     try {
       return await this.readCoordinator.read({
         accountKey: this.accountKey,
@@ -267,10 +259,7 @@ class StatsService {
   } = {}) {
     const observation = canonicalStatsFromPartial(partial);
     if (Object.keys(observation).length === 0) return { applied: false, changes: [] };
-    if (this.mode === 'legacy') {
-      projectStatsToStateStore(observation, this.stateStore);
-      return { applied: true, changes: Object.keys(observation) };
-    }
+
     return this.worldStateService.applyPatch({
       accountKey: this.accountKey,
       domain: WorldDomain.STATS,
@@ -288,7 +277,6 @@ class StatsService {
   }
 
   peek() {
-    if (this.mode === 'legacy') return { value: canonicalStatsFromPartial(this.stateStore.getState()), meta: null, revision: null };
     return this.readCoordinator.peek(this.accountKey, WorldDomain.STATS, STATS_RESOURCE_KEY);
   }
 

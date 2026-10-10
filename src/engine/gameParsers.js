@@ -118,6 +118,13 @@ function registerDefinition(definitions, warnings, definition) {
   }
 }
 
+function linkedCrystalSignature(html) {
+  return elementBlocks(String(html || ''), 'div', 'linked-crystal-chip')
+    .map(block => stripTags(block.html).replace(/^💎\s*/, '').trim().toLowerCase().replace(/\s+/g, ' '))
+    .filter(Boolean)
+    .sort();
+}
+
 function parseGearInventoryCard(block) {
   const info = findTagAttributesByClass(block.html, 'button', 'info-btn') || {};
   const image = findImageAttributes(block.html) || {};
@@ -143,6 +150,7 @@ function parseGearInventoryCard(block) {
     description,
     rawEffect,
     effects: parseRecognizedEffects(rawEffect),
+    linkedCrystals: linkedCrystalSignature(block.html),
   };
 }
 
@@ -159,11 +167,19 @@ function parseEquippedGearCard(block, instancesByKey) {
   const defense = label.match(/([\d,]+)\s*<\/span>\s*DEF/i);
   const slotIndex = block.html.match(/unequipItem\(\s*(\d+)\s*\)/i);
   const candidates = instancesByKey.get(definitionKey) || [];
-  const matched = candidates.find(candidate =>
+  const compatible = candidates.filter(candidate =>
     (!slot || !candidate.slot || candidate.slot === slot.replace(/\s+\d+$/, ''))
     && (parseNumber(attack?.[1]) ?? candidate.attack) === candidate.attack
     && (parseNumber(defense?.[1]) ?? candidate.defense) === candidate.defense
-  ) || candidates[0] || {};
+  );
+  const linkedCrystals = linkedCrystalSignature(block.html);
+  let matched = compatible.length === 1 ? compatible[0] : null;
+  if (!matched && linkedCrystals.length) {
+    const signature = JSON.stringify(linkedCrystals);
+    const exact = compatible.filter(candidate => JSON.stringify(candidate.linkedCrystals || []) === signature);
+    if (exact.length === 1) matched = exact[0];
+  }
+  matched ||= {};
   return {
     definitionKey,
     name,
@@ -179,6 +195,7 @@ function parseEquippedGearCard(block, instancesByKey) {
     elementRatePercent: matched.elementRatePercent || 0,
     rawEffect: matched.rawEffect || '',
     effects: matched.effects || [],
+    linkedCrystals,
   };
 }
 
@@ -218,6 +235,7 @@ function parseGearInventoryPage(html) {
     .map(block => parseEquippedGearCard(block, instancesByKey))
     .filter(Boolean);
   for (const entry of equipped) {
+    if (!entry.inventoryRef) warnings.push(`Saved Gear item could not be resolved safely: ${entry.name}`);
     registerDefinition(definitions, warnings, {
       key: entry.definitionKey,
       name: entry.name,
@@ -1456,6 +1474,7 @@ function parseBattlePage(html) {
     isJoined: !hasJoinButton && (skills.length > 0 || hasLootButton),
     hasLootButton,
     hasJoinButton,
+    phaseDamage: (()=>{const match=stripTags(String(html||'')).match(/Phase DMG:\s*([\d,]+)/i);return match?parseNumber(match[1]):null;})(),
     userDamage: userDamageMatch ? parseNumber(userDamageMatch[1]) : null,
     rewardInfo: {
       recognized: expPerDamage !== null,
@@ -1582,6 +1601,7 @@ function parseBattlePass(html) {
 }
 
 module.exports = {
+  elementBlocks,
   decodeHtml,
   stripTags,
   parseNumber,

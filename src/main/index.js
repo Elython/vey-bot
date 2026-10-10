@@ -29,6 +29,7 @@ const { AccountDatabase } = require('../engine/accountDatabase');
 const { AutoFarmService } = require('../engine/autoFarmService');
 const { LootDiscoveryService } = require('../engine/lootDiscoveryService');
 const { CubePvPService } = require('../engine/cubePvpService');
+const { PowerCrystalService } = require('../engine/powerCrystalService');
 const { ObjectiveModuleService } = require('../engine/objectiveModuleService');
 const { AreaDirectoryService } = require('../engine/areaDirectoryService');
 const { TargetDiscoveryService } = require('../engine/targetDiscoveryService');
@@ -78,6 +79,7 @@ let xpModel = null;
 let activityHistoryStore = null;
 let accountDatabase = null;
 let cubePvpService = null;
+let powerCrystalService = null;
 let collectorRegistry = null;
 let worldStateService = null;
 let readCoordinator = null;
@@ -155,18 +157,15 @@ async function performLogin(accountName) {
   const httpClient = new HttpClient(wc, accountName, timingEngine);
   mangaManager.setHttpClient(httpClient);
   const gameAPI = new GameAPI(httpClient, accountName);
-  worldStateAccountKey = accountKeyFromUserId(await gameAPI.getAuthenticatedUserId());
+  const gameUserId = await gameAPI.getAuthenticatedUserId();
+  worldStateAccountKey = accountKeyFromUserId(gameUserId);
   const accountBinding = accountDatabase.bindStableAccount(worldStateAccountKey, accountName);
   if (accountBinding.conflict) {
     Logger.logClient(accountName, 'A legacy display-name account record was preserved for manual recovery because stable account data already existed.');
   }
   configManager.setActiveAccount({ accountKey: worldStateAccountKey, displayName: accountName });
-  // Chapter mode is stored by MangaManager. Reconcile it only after the
-  // stable account record is active so it cannot leak across accounts.
-  const savedFarmSettings = mangaManager.getAccountFarmSettings(accountName);
-  configManager.update({
-    energyFarming: { enabled: savedFarmSettings?.module === 'automatic' },
-  });
+  // Read historical Chapter preferences once, after stable account binding.
+  configManager.migrateChapterSettings(mangaManager.getAccountFarmSettings(accountName));
   config = configManager.getConfig();
   timingEngine.updateConfig(config.scheduler);
   areaAccessService = new AreaAccessService(gameAPI);
@@ -241,6 +240,7 @@ async function performLogin(accountName) {
   });
   collectorRegistry.register(WorldDomain.LOADOUT, loadoutService.getCollector());
   const gameController = new GameController(gameAPI, timingEngine);
+  powerCrystalService = new PowerCrystalService({ gameAPI, configManager, loadoutService, gameController });
   const battleManager = new BattleManager(gameAPI, gameController, accountName);
   const moduleRegistry = new ModuleRegistry();
   const attackPlanner = new AttackPlanner(config);
@@ -251,6 +251,7 @@ async function performLogin(accountName) {
   chapterFarmer = new ChapterFarmer(httpClient, timingEngine);
   energyFarmEngine = new EnergyFarmEngine(chapterFarmer);
   botEngine = new BotEngine({
+    allowSoloPvp: false,
     accountName,
     accountKey: worldStateAccountKey,
     configManager,
@@ -265,6 +266,7 @@ async function performLogin(accountName) {
     moduleRegistry,
     resourcePolicyEngine,
     loadoutService,
+    powerCrystalService,
     monsterCatalogService,
     targetDiscoveryService,
     lootDiscoveryService,
@@ -305,6 +307,10 @@ async function performLogin(accountName) {
     accountName,
   });
   collectorRegistry.register(WorldDomain.CUBE, cubePvpService.getCollector());
+  botEngine.customRunCubeStatus = () => cubePvpService?.getStatus();
+  botEngine.on('custom-run-step', config => {
+    cubePvpService?.start(config).catch(error => Logger.logClient(accountName,'Custom Run Cube update failed: '+error.message));
+  });
   cubePvpService.on('status', status => {
     windowManager?.sendToMain('cube-pvp:status', status);
     Logger.logClient(accountName, `[Cube PvP] ${status.state}${status.waitReason ? `: ${status.waitReason}` : ''}${status.error ? `: ${status.error}` : ''}`);
@@ -371,6 +377,7 @@ async function handleLogout() {
     }
   }
   await cubePvpService?.stop?.();
+  await powerCrystalService?.dispose?.();
   await lootDiscoveryService?.whenIdle?.();
   statsService?.dispose?.();
   if (readCoordinator && worldStateAccountKey) {
@@ -405,6 +412,7 @@ async function handleLogout() {
 
   botEngine = null;
   cubePvpService = null;
+  powerCrystalService = null;
   autoFarmService = null;
   monsterCatalogService = null;
   areaDirectoryService = null;
@@ -723,6 +731,7 @@ app.whenReady().then(() => {
     getActivityHistoryStore: () => activityHistoryStore,
     getAccountDatabase: () => accountDatabase,
     getCubePvpService: () => cubePvpService,
+    getPowerCrystalService: () => powerCrystalService,
   });
 
   // Pipe logger events in real-time to renderer

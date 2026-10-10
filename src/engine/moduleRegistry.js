@@ -1,6 +1,7 @@
 const { getMonsterArea } = require('./monsterCatalog');
 
 const BUILTIN_MODULES = Object.freeze({
+  custom_runs: { id: 'custom_runs', label: 'Custom Run', status: 'ready', mapTypes: [] },
   idle: { id: 'idle', label: 'Idle', status: 'ready', mapTypes: [] },
   gates: { id: 'gates', label: 'Gates', status: 'ready', mapTypes: ['gate'] },
   dungeons: { id: 'dungeons', label: 'Dungeons', status: 'ready', mapTypes: ['dungeon'] },
@@ -8,7 +9,6 @@ const BUILTIN_MODULES = Object.freeze({
   boss_hunt: { id: 'boss_hunt', label: 'Boss Hunt', status: 'ready', mapTypes: ['gate', 'event'] },
   battle_pass: { id: 'battle_pass', label: 'Battle Pass', status: 'ready', mapTypes: [] },
   adventure_quests: { id: 'adventure_quests', label: 'Adv Quests', status: 'ready', mapTypes: [] },
-  pvp: { id: 'pvp', label: 'PvP', status: 'deferred', mapTypes: [] },
 });
 
 class ModuleRegistry {

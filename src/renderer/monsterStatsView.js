@@ -23,7 +23,7 @@
 
     open(areaKey, monsterKey, name) {
       this.current = { areaKey, monsterKey, name };
-      if (this.title) this.title.textContent = `${name} Stats`;
+      if (this.title) this.title.textContent = uiText("{0} Stats", name);
       if (this.modal) this.modal.style.display = 'flex';
       this.load(false);
     }
@@ -34,8 +34,8 @@
 
     async load(refresh) {
       if (!this.current || !this.content) return;
-      this.content.replaceChildren(this._message('Loading monster stats…'));
-      if (this.status) this.status.textContent = refresh ? 'Refreshing from battle page…' : '';
+      this.content.replaceChildren(this._message(uiText('Loading monster stats…')));
+      if (this.status) this.status.textContent = refresh ? uiText('Refreshing from battle page…') : '';
       this.status?.classList.remove('has-conflict');
       if (this.applyButton) this.applyButton.style.display = 'none';
       if (this.refreshButton) this.refreshButton.disabled = true;
@@ -45,11 +45,11 @@
           this.current.monsterKey,
           refresh
         );
-        if (!result?.success) throw new Error(result?.error || 'Monster Stats are unavailable');
+        if (!result?.success) throw new Error(result?.error || uiText('Monster Stats are unavailable'));
         this.render(result.record, result);
       } catch (error) {
         this.content.replaceChildren(this._message(error.message, 'monster-stats-error'));
-        if (this.status) this.status.textContent = 'No verified stats available';
+        if (this.status) this.status.textContent = uiText('No verified stats available');
       } finally {
         if (this.refreshButton) this.refreshButton.disabled = false;
       }
@@ -60,7 +60,7 @@
       this.applyButton.disabled = true;
       try {
         const result = await this.api.applyObservedMonsterStats(this.current.areaKey, this.current.monsterKey);
-        if (!result?.success) throw new Error(result?.error || 'Changed Monster Stats could not be applied');
+        if (!result?.success) throw new Error(result?.error || uiText('Changed Monster Stats could not be applied'));
         this.render(result.record, { conflict: false, applied: true });
       } catch (error) {
         if (this.status) {
@@ -75,18 +75,18 @@
     render(record, result) {
       const stats = record?.stats || {};
       const cells = [
-        ['EXP / DMG', Number.isFinite(Number(stats.expPerDamage)) ? Number(stats.expPerDamage).toFixed(6) : 'Unknown'],
-        ['Attack', formatNumber(stats.attack)],
-        ['Defense', formatNumber(stats.defense)],
-        ['Pet Defense', formatNumber(stats.petDefense)],
-        ['Equipment Defense', formatNumber(stats.equipmentDefense)],
-        ['Element', stats.element || 'Unknown'],
-        ['Element Rate', `${formatNumber(stats.elementRatePercent)}%`],
-        ['Rewards Up To', stats.rewardsUpToLevel == null ? 'Unknown' : `LV ${formatNumber(stats.rewardsUpToLevel)}`],
-        ['Crit Rate Resistance', `${formatNumber(stats.resistances?.critRatePercent)}%`],
-        ['Crit Damage Resistance', `${formatNumber(stats.resistances?.critDamagePercent)}%`],
-        ['Final Damage Resistance', `${formatNumber(stats.resistances?.finalDamagePercent)}%`],
-        ['Passive Damage Resistance', `${formatNumber(stats.resistances?.passiveDamagePercent)}%`],
+        [uiText('EXP / DMG'), Number.isFinite(Number(stats.expPerDamage)) ? Number(stats.expPerDamage).toFixed(6) : 'Unknown'],
+        [uiText('Attack'), formatNumber(stats.attack)],
+        [uiText('Defense'), formatNumber(stats.defense)],
+        [uiText('Pet Defense'), formatNumber(stats.petDefense)],
+        [uiText('Equipment Defense'), formatNumber(stats.equipmentDefense)],
+        [uiText('Element'), stats.element || 'Unknown'],
+        [uiText('Element Rate'), `${formatNumber(stats.elementRatePercent)}%`],
+        [uiText('Rewards Up To'), stats.rewardsUpToLevel == null ? 'Unknown' : `LV ${formatNumber(stats.rewardsUpToLevel)}`],
+        [uiText('Crit Rate Resistance'), `${formatNumber(stats.resistances?.critRatePercent)}%`],
+        [uiText('Crit Damage Resistance'), `${formatNumber(stats.resistances?.critDamagePercent)}%`],
+        [uiText('Final Damage Resistance'), `${formatNumber(stats.resistances?.finalDamagePercent)}%`],
+        [uiText('Passive Damage Resistance'), `${formatNumber(stats.resistances?.passiveDamagePercent)}%`],
       ];
       const grid = document.createElement('div');
       grid.className = 'monster-stats-grid';
@@ -105,7 +105,7 @@
       if (rewards.length > 0) {
         const groups = new Map();
         for (const reward of rewards) {
-          const heading = reward.phase ? `Phase ${reward.phase} Loot` : 'Possible Loot';
+          const heading = reward.phase ? uiText("Phase {0} Loot", reward.phase) : uiText('Possible Loot');
           if (!groups.has(heading)) groups.set(heading, []);
           groups.get(heading).push(reward);
         }
@@ -122,7 +122,7 @@
             const name = document.createElement('strong');
             name.textContent = reward.name;
             const detail = document.createElement('span');
-            detail.textContent = `${formatNumber(reward.damageRequired)} damage · ${formatNumber(reward.dropChance)}%`;
+            detail.textContent = uiText("{0} damage · {1}%", formatNumber(reward.damageRequired), formatNumber(reward.dropChance));
             row.append(name, detail);
             list.appendChild(row);
           }
@@ -131,12 +131,12 @@
         }
       }
       const observed = record?.provenance?.observedAt;
-      const source = result.cached ? 'Saved verified catalog' : 'Live battle page';
+      const source = result.cached ? uiText('Saved verified catalog') : uiText('Live battle page');
       if (this.status) {
         this.status.textContent = result.applied
-          ? 'Changed live values were applied to the saved catalog'
+          ? uiText('Changed live values were applied to the saved catalog')
           : result.conflict
-          ? `${source} · conflicting live values detected; verified values were preserved`
+          ? uiText("{0} · conflicting live values detected; verified values were preserved", source)
           : `${source}${observed ? ` · observed ${observed}` : ''}`;
         this.status.classList.toggle('has-conflict', Boolean(result.conflict));
       }

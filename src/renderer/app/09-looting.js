@@ -32,8 +32,8 @@ function renderLootArea(area, discovered = [], sourceAvailable = true, message =
     const empty = document.createElement('div');
     empty.className = sourceAvailable ? 'empty-state' : 'empty-config-panel compact-empty-config';
     empty.textContent = message || (sourceAvailable
-      ? `No monster types were found for ${area.label}.`
-      : 'Dungeon monster discovery requires an active dungeon instance.');
+      ? uiText("No monster types were found for {0}.", area.label)
+      : uiText('Dungeon monster discovery requires an active dungeon instance.'));
     lootAreaContent.replaceChildren(empty);
     return;
   }
@@ -60,39 +60,39 @@ function renderLootArea(area, discovered = [], sourceAvailable = true, message =
     if (monster.phase) {
       const badge = document.createElement('span');
       badge.className = 'monster-phase-badge';
-      badge.textContent = `Phase ${monster.phase}`;
+      badge.textContent = uiText("Phase {0}", monster.phase);
       name.appendChild(badge);
     } else if (monster.boss) {
       const badge = document.createElement('span');
       badge.className = 'monster-boss-badge';
-      badge.textContent = 'Boss';
+      badge.textContent = uiText('Boss');
       name.appendChild(badge);
     }
     const lootable = document.createElement('span');
     lootable.className = 'lootable-count';
     lootable.textContent = Number.isFinite(Number(monster.lootableCount)) ? String(monster.lootableCount) : '—';
-    lootable.title = `${monster.name} currently available to loot`;
+    lootable.title = uiText("{0} currently available to loot", monster.name);
     const priority = document.createElement('input');
     priority.type = 'number';
     priority.min = '0';
     priority.step = '1';
     priority.value = stored.priority ?? 0;
     priority.className = 'monster-number-input loot-priority-input';
-    priority.title = 'Lower numbers are looted first; equal priorities sort by monster name.';
-    priority.setAttribute('aria-label', `${monster.name} loot priority`);
+    priority.title = uiText('Lower numbers are looted first; equal priorities sort by monster name.');
+    priority.setAttribute('aria-label', uiText("{0} loot priority", monster.name));
     const maxLooting = document.createElement('input');
     maxLooting.type = 'number';
     maxLooting.min = '0';
     maxLooting.step = '1';
     maxLooting.value = stored.maxLooting ?? 0;
     maxLooting.className = 'monster-number-input loot-limit-input';
-    maxLooting.setAttribute('aria-label', `${monster.name} maximum looting count`);
+    maxLooting.setAttribute('aria-label', uiText("{0} maximum looting count", monster.name));
     const unlimited = document.createElement('input');
     unlimited.type = 'checkbox';
     unlimited.className = 'tree-checkbox loot-unlimited';
     unlimited.checked = stored.unlimited === true;
-    unlimited.title = 'Allow looting without a count limit.';
-    unlimited.setAttribute('aria-label', `Unlimited looting for ${monster.name}`);
+    unlimited.title = uiText('Allow looting without a count limit.');
+    unlimited.setAttribute('aria-label', uiText("Unlimited looting for {0}", monster.name));
     const updateLootLimitState = () => {
       maxLooting.disabled = unlimited.checked;
       maxLooting.classList.toggle('module-setting-disabled', unlimited.checked);
@@ -106,7 +106,7 @@ function renderLootArea(area, discovered = [], sourceAvailable = true, message =
     resetProgress.type = 'button';
     resetProgress.className = 'monster-progress-reset';
     resetProgress.append(createLucideIcon('rotate-ccw'));
-    resetProgress.title = `Reset looted count for ${monster.name}`;
+    resetProgress.title = uiText("Reset looted count for {0}", monster.name);
     resetProgress.addEventListener('click', async () => {
       const result = await updateCanonicalConfig({
         looting: { maps: { [area.key]: { [monster.key]: { lootedCount: 0, lootedInstanceIds: [] } } } },
@@ -123,7 +123,7 @@ function renderLootArea(area, discovered = [], sourceAvailable = true, message =
     enabled.type = 'checkbox';
     enabled.className = 'tree-checkbox loot-enabled';
     enabled.checked = stored.enabled === true;
-    enabled.setAttribute('aria-label', `Enable looting ${monster.name}`);
+    enabled.setAttribute('aria-label', uiText("Enable looting {0}", monster.name));
     const controls = { priority, maxLooting, unlimited, enabled };
     Object.values(controls).forEach(control => {
       control.addEventListener('change', () => saveLootRow(area.key, monster.key, monster.name, controls));
@@ -183,7 +183,7 @@ async function selectLootArea(areaKey, force = false) {
     return;
   }
 
-  lootAreaContent.innerHTML = '<div class="empty-state">Loading monster types…</div>';
+  lootAreaContent.innerHTML = ("<div class=\"empty-state\">" + uiText("Loading monster types…") + "</div>");
   const result = await window.botAPI.listLootableMonstersForArea(areaKey);
   if (!result?.success) {
     renderLootArea(area, [], true, result?.error || 'Monster discovery failed.');

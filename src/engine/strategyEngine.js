@@ -71,6 +71,7 @@ class StrategyEngine {
     if (module === 'idle') {
       return this._waitForConfiguredModule();
     }
+    if (module === 'pvp') return state.soloPvpDecision || { action: 'WAIT', params: {}, reason: 'Waiting for Solo PvP state' };
     if (module === 'auto_farm') {
       return state.autoFarmSynchronized === true
         ? { action: 'WAIT', params: {}, reason: 'Server Auto Farm is running' }
@@ -241,6 +242,7 @@ class StrategyEngine {
         }
         return {
           action: 'WAIT',
+          waitKind: 'resources_exhausted',
           params: {},
           reason: `Target requires about ${plan.requiredStamina || 0} stamina; ${plan.availableStamina || 0} is available now above the configured ${plan.reservePercent || 0}% minimum, plus ${plan.refillStamina || 0} from verified permitted refills`,
         };
@@ -251,7 +253,9 @@ class StrategyEngine {
         return {
           action: 'ATTACK',
           params: { skill },
-          reason: `Attacking with ${skill.name} (cost: ${skill.stamCost} stamina${estimate})`,
+          reason: plan.source === 'artemis-curse'
+            ? `Attacking with ${skill.name} because of Artemis curse (${Number(state.artemisMarkTurns) || 0} marked turns remaining; cost: ${skill.stamCost} stamina${estimate})`
+            : `Attacking with ${skill.name} (cost: ${skill.stamCost} stamina${estimate})`,
         };
       }
     }
@@ -295,7 +299,7 @@ class StrategyEngine {
     const scanForTargetPotion = !state.currentBattle
       && !this._hasStamina(state)
       && this._canScanForTargetStaminaPotion(state);
-    if (!state.currentBattle && (this._hasStamina(state) || scanForTargetPotion)) {
+    if (!state.currentBattle && (this._hasStamina(state) || scanForTargetPotion || state.progression?.needsCombatTarget === true)) {
       const scan = this._scanParams(state);
       if (!scan) return this._waitForConfiguredModule();
       return {
@@ -312,6 +316,7 @@ class StrategyEngine {
     const reservePercent = Math.max(0, Number(this.config.resources?.stamina?.keepMin) || 0);
     return {
       action: 'WAIT',
+      waitKind: 'resources_exhausted',
       params: {},
       reason: Number(state.stamina) <= reserve
         ? `Stamina ${state.stamina}/${state.maxStamina} is at or below the configured minimum (${reserve.toLocaleString()} / ${reservePercent}%); waiting for regeneration`
@@ -359,6 +364,8 @@ class StrategyEngine {
    * @returns {boolean}
    */
   _shouldFarmEnergy(state) {
+    if (state.progression?.needsCombatTarget === true) return false;
+    if (state.progression?.drainForChapterFallback === true && Number(state.stamina) > 0) return false;
     if (['battle_pass', 'adventure_quests'].includes(this.config.general?.module)) return false;
     if (state.progression?.ignoreSoftStaminaRules === true) return false;
     // Progression owns every automatic Chapter-farming decision. The Chapters
@@ -437,6 +444,7 @@ class StrategyEngine {
     const map = this.config.general?.map;
     return {
       action: 'WAIT',
+      waitKind: ['battle_pass','adventure_quests','idle'].includes(moduleName) ? 'no_work' : 'blocked',
       params: {},
       reason: moduleName === 'idle'
         ? 'Module is Idle'

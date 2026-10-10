@@ -23,6 +23,8 @@ async function saveAttackStrategy() {
         maxMultiplier: Number(selectMaxAttack?.value) || 200,
         overshootPercent: Math.min(500, Math.max(0, nonNegativeInputValue(inputAttackOvershoot))),
         failSafeEnabled: Boolean(chkAdaptiveFailSafe?.checked),
+        avoidArtemisCurse: chkAvoidArtemisCurse?.checked === true,
+        artemisCurseMultiplier: Number(selectArtemisCurseHit?.value) || 1,
         failSafePercent: Math.min(100, Math.max(0, nonNegativeInputValue(inputAdaptiveFailSafePercent))),
         requireTargetStamina: Boolean(chkAdaptiveRequireTargetStamina?.checked),
         nukeEnabled: Boolean(chkAdaptiveNuke?.checked),
@@ -36,6 +38,9 @@ async function saveAttackStrategy() {
 }
 
 function updateAttackModuleRows() {
+  const avoidCurse = chkAvoidArtemisCurse?.checked === true;
+  if (selectArtemisCurseHit) selectArtemisCurseHit.disabled = !avoidCurse;
+  rowArtemisCurseHit?.classList.toggle('module-setting-disabled', !avoidCurse);
   const adaptive = selectAttackMode?.value === 'adaptive';
   if (rowFixedAttack) rowFixedAttack.style.display = adaptive ? 'none' : 'flex';
   if (rowAdaptiveMax) rowAdaptiveMax.style.display = adaptive ? 'flex' : 'none';
@@ -113,7 +118,7 @@ async function showLoadoutInfo(kind) {
     totals = result.savedSet?.totals;
   }
   if (loadoutInfoSummary) {
-    loadoutInfoSummary.textContent = `ATK ${formatCombatValue(totals?.attack)} · DEF ${formatCombatValue(totals?.defense)}`;
+    loadoutInfoSummary.textContent = uiText("ATK {0} · DEF {1}", formatCombatValue(totals?.attack), formatCombatValue(totals?.defense));
   }
   if (!Array.isArray(items) || items.length === 0) {
     loadoutInfoEmpty(activeAccount ? 'No active items were found.' : 'Log in to read the active set.');
@@ -151,28 +156,28 @@ function renderUnlockedAbilities(data) {
   const header = document.createElement('div');
   header.className = 'combat-ability-table-row combat-ability-table-header';
   for (const [label, title] of [
-    ['Ability', 'Ability name read from the class Skill Tree.'], ['Info', 'Open the effect description read from the game page.'],
-    ['MP', 'Mana consumed by one use.'], ['ST', 'Stamina consumed by one use.'], ['Type', 'Attack deals damage; Buff prepares your next actions; Debuff affects the enemy; Passive is never executed.'],
-    ['Max', 'Maximum uses against each concrete enemy. Zero means unlimited.'], ['First', 'Successful damaging attacks to wait before the first use against each enemy.'],
-    ['Reuse', 'Successful damaging attacks to wait before using this ability again.'],
-    ['Min ST', 'Buff/Debuff only: minimum Stamina multiplier of the next damaging attack.'],
-    ['Allow', 'Allow this owned ability globally. The monster row must also allow abilities.'],
+    [uiText('Ability'), uiText('Ability name read from the class Skill Tree.')], [uiText('Info'), uiText('Open the effect description read from the game page.')],
+    [uiText('MP'), uiText('Mana consumed by one use.')], [uiText('ST'), uiText('Stamina consumed by one use.')], [uiText('Type'), uiText('Attack deals damage; Buff prepares your next actions; Debuff affects the enemy; Passive is never executed.')],
+    [uiText('Max'), uiText('Maximum uses against each concrete enemy. Zero means unlimited.')], [uiText('First'), uiText('Successful damaging attacks to wait before the first use against each enemy.')],
+    [uiText('Reuse'), uiText('Successful damaging attacks to wait before using this ability again.')],
+    [uiText('Min ST'), uiText('Buff/Debuff only: minimum Stamina multiplier of the next damaging attack.')],
+    [uiText('Allow'), uiText('Allow this owned ability globally. The monster row must also allow abilities.')],
   ]) {
-    const cell = document.createElement('span'); cell.textContent = label; cell.title = title; header.append(cell);
+    const cell = document.createElement('span'); cell.textContent = label; cell.title = uiText(title); header.append(cell);
   }
   table.append(header);
   let rowCount = 0;
   const appendInfoButton = (title, body) => {
     const button = document.createElement('button');
     button.type = 'button'; button.className = 'monster-stats-help combat-ability-info'; button.append(createLucideIcon('circle-help'));
-    button.title = `View ${title} description`;
-    button.addEventListener('click', () => showInfoDialog({ title, body: body || 'No description was provided by the skill tree.' }));
+    button.title = uiText("View {0} description", title);
+    button.addEventListener('click', () => showInfoDialog({ title, body: body || uiText('No description was provided by the skill tree.') }));
     return button;
   };
   if (data?.classPassive) {
     const row = document.createElement('div'); row.className = 'combat-ability-table-row combat-ability-passive';
-    const name = document.createElement('span'); name.textContent = `${data.className} passive`;
-    const role = document.createElement('span'); role.textContent = 'Passive';
+    const name = document.createElement('span'); name.textContent = uiText("{0} passive", data.className);
+    const role = document.createElement('span'); role.textContent = uiText('Passive');
     row.append(name, appendInfoButton(`${data.className} passive`, data.classPassive), document.createTextNode('—'), document.createTextNode('—'), role,
       document.createTextNode('—'), document.createTextNode('—'), document.createTextNode('—'), document.createTextNode('—'), document.createTextNode('—'));
     table.append(row); rowCount += 1;
@@ -188,7 +193,7 @@ function renderUnlockedAbilities(data) {
     const mana = document.createElement('span'); mana.textContent = String(skill.manaCost || 0);
     const stamina = document.createElement('span'); stamina.textContent = String(skill.staminaCost || 0);
     if (skill.passive) {
-      const role = document.createElement('span'); role.textContent = 'Passive';
+      const role = document.createElement('span'); role.textContent = uiText('Passive');
       row.append(name, info, mana, stamina, role, document.createTextNode('—'), document.createTextNode('—'), document.createTextNode('—'), document.createTextNode('—'), document.createTextNode('—'));
       table.append(row); rowCount += 1;
       continue;
@@ -198,7 +203,7 @@ function renderUnlockedAbilities(data) {
     checkbox.className = 'tree-checkbox combat-ability-checkbox';
     checkbox.checked = allowedCombatAbilityIds.has(skill.id);
     checkbox.disabled = chkAllowClassAbilities?.checked !== true;
-    checkbox.setAttribute('aria-label', `Allow ${skill.name}`);
+    checkbox.setAttribute('aria-label', uiText("Allow {0}", skill.name));
     checkbox.addEventListener('change', () => {
       if (checkbox.checked) allowedCombatAbilityIds.add(skill.id);
       else allowedCombatAbilityIds.delete(skill.id);
@@ -207,30 +212,30 @@ function renderUnlockedAbilities(data) {
     const savedPolicy = combatAbilityPolicies[String(skill.id)] || { role: 'select', maxUses: 0, initialWaitTurns: 0, reapplyTurns: 1, minimumNextAttackStamina: 0 };
     const role = document.createElement('select');
     role.className = 'tree-select combat-ability-role';
-    for (const [value, label] of [['select', 'Select'], ['attack', 'Attack'], ['buff', 'Buff'], ['debuff', 'Debuff'], ['passive', 'Passive']]) {
+    for (const [value, label] of [['select', uiText('Select')], ['attack', uiText('Attack')], ['buff', uiText('Buff')], ['debuff', uiText('Debuff')], ['passive', uiText('Passive')]]) {
       role.append(new Option(label, value));
     }
     role.value = savedPolicy.role || 'select';
     role.disabled = chkAllowClassAbilities?.checked !== true;
-    role.title = 'Choose how the scheduler treats this ability.';
+    role.title = uiText('Choose how the scheduler treats this ability.');
     const makePolicyInput = (value, min, label) => {
       const input = document.createElement('input'); input.type = 'number'; input.min = String(min); input.max = '1000000';
       input.value = String(value); input.className = 'tree-input-sm combat-ability-number'; input.setAttribute('aria-label', `${skill.name} ${label}`);
       return input;
     };
     const maxUses = makePolicyInput(savedPolicy.maxUses ?? 0, 0, 'maximum uses');
-    maxUses.title = '0 means unlimited uses for each enemy.';
+    maxUses.title = uiText('0 means unlimited uses for each enemy.');
     const initialWait = makePolicyInput(savedPolicy.initialWaitTurns ?? 0, 0, 'initial wait attacks');
-    initialWait.max = '1000'; initialWait.title = 'Successful damaging attacks to wait before the first use on each enemy.';
+    initialWait.max = '1000'; initialWait.title = uiText('Successful damaging attacks to wait before the first use on each enemy.');
     const repeatWait = makePolicyInput(savedPolicy.reapplyTurns ?? (role.value === 'debuff' ? 3 : 1), 1, 'repeat wait attacks');
-    repeatWait.max = '1000'; repeatWait.title = 'Successful damaging attacks to wait before this ability can be used again.';
+    repeatWait.max = '1000'; repeatWait.title = uiText('Successful damaging attacks to wait before this ability can be used again.');
     const minimumNextAttack = document.createElement('select');
     minimumNextAttack.className = 'tree-select combat-ability-minimum';
-    minimumNextAttack.setAttribute('aria-label', `${skill.name} minimum next attack Stamina`);
-    for (const multiplier of [1, 10, 50, 100, 200, 1000]) minimumNextAttack.append(new Option(`x${multiplier}`, String(multiplier)));
+    minimumNextAttack.setAttribute('aria-label', uiText("{0} minimum next attack Stamina", skill.name));
+    for (const multiplier of [1, 10, 50, 100, 200, 1000]) minimumNextAttack.append(new Option(uiText("x{0}", multiplier), String(multiplier)));
     minimumNextAttack.value = String([1, 10, 50, 100, 200, 1000].includes(Number(savedPolicy.minimumNextAttackStamina))
       ? Number(savedPolicy.minimumNextAttackStamina) : 1);
-    minimumNextAttack.title = 'Buff/Debuff only: use this support ability when the next damaging attack costs at least this much ST.';
+    minimumNextAttack.title = uiText('Buff/Debuff only: use this support ability when the next damaging attack costs at least this much ST.');
     const updatePolicyAvailability = () => {
       const disabled = chkAllowClassAbilities?.checked !== true || ['select', 'passive'].includes(role.value);
       checkbox.disabled = disabled;
@@ -274,7 +279,7 @@ function renderUnlockedAbilities(data) {
   }
   const empty = document.createElement('div');
   empty.className = 'empty-state';
-  empty.textContent = 'No class abilities found.';
+  empty.textContent = uiText('No class abilities found.');
   combatUnlockedAbilities.replaceChildren(empty);
 }
 
@@ -282,7 +287,7 @@ function populateNukeAttackOptions(data) {
   if (!selectAdaptiveNukeAttack) return;
   const selected = configuredNukeAttack || selectAdaptiveNukeAttack.value || 'auto';
   const options = [
-    ['auto', 'Auto'],
+    ['auto', uiText('Auto')],
     ['normal:1', 'x1'], ['normal:10', 'x10'], ['normal:50', 'x50'],
     ['normal:100', 'x100'], ['normal:200', 'x200'], ['normal:1000', 'x1000'],
   ];
@@ -312,14 +317,14 @@ async function refreshClassSkills(force = false) {
     const result = await window.botAPI.getClassSkills(force);
     if (!isCurrentAccountRequest(requestToken)) return;
     if (!result?.success) {
-      if (combatUnlockedAbilities) combatUnlockedAbilities.textContent = result?.error || 'Class skills could not be read';
+      if (combatUnlockedAbilities) combatUnlockedAbilities.textContent = result?.error || uiText('Class skills could not be read');
       return;
     }
     activeClassSkills = result.skillTree;
     renderUnlockedAbilities(activeClassSkills);
   } catch (error) {
     if (!isCurrentAccountRequest(requestToken)) return;
-    if (combatUnlockedAbilities) combatUnlockedAbilities.textContent = error.message || 'Class skills could not be read';
+    if (combatUnlockedAbilities) combatUnlockedAbilities.textContent = error.message || uiText('Class skills could not be read');
   }
 }
 
@@ -329,7 +334,7 @@ async function refreshAttackStrategyStatus(force = false) {
   try {
     const result = await window.botAPI.getAttackStrategyStatus(force);
     if (!isCurrentAccountRequest(requestToken)) return;
-    if (!result?.success) throw new Error(result?.error || 'Active loadout could not be read');
+    if (!result?.success) throw new Error(result?.error || uiText('Active loadout could not be read'));
     const loadout = result.loadout || {};
     activeCombatLoadout = loadout;
     const gearTotals = loadout.totals?.gear || {};
@@ -359,6 +364,7 @@ async function refreshCombatData(force = false) {
 }
 
 function loadHomeConfiguration(config) {
+  loadCustomRuns(config);
   const requestedModule = config.general?.module || 'idle';
   const supportedModule = selectGeneralModule
     && [...selectGeneralModule.options].some(option => option.value === requestedModule)
@@ -380,6 +386,7 @@ function loadHomeConfiguration(config) {
       });
   }
   loadProgressionProfileConfiguration(config);
+  loadCombatProfileConfiguration(config);
   const stamina = config.resources?.stamina || {};
   const health = config.resources?.health || {};
   const mana = config.resources?.mana || {};
@@ -431,6 +438,7 @@ function loadHomeConfiguration(config) {
   if (inputMaxManaPotionPurchases) inputMaxManaPotionPurchases.value = mana.maxPurchases ?? 0;
   if (manaPotsPurchasedCount) manaPotsPurchasedCount.textContent = String(mana.purchasedCount ?? 0);
   updatePotionPolicyControls();
+  if (chkEnableCrystalRouting) chkEnableCrystalRouting.checked = config.powerCrystals?.enabled === true;
   Object.entries(EQUIPMENT_SELECTS).forEach(([groupName, group]) => {
     Object.entries(group).forEach(([context, select]) => {
       if (select) select.value = config.equipment?.[groupName]?.[context] || 'default';
@@ -441,6 +449,8 @@ function loadHomeConfiguration(config) {
   if (selectFixedAttack) selectFixedAttack.value = String(attackStrategy.fixedMultiplier || 1);
   if (selectMaxAttack) selectMaxAttack.value = String(attackStrategy.maxMultiplier || 200);
   if (inputAttackOvershoot) inputAttackOvershoot.value = attackStrategy.overshootPercent ?? 10;
+  if (chkAvoidArtemisCurse) chkAvoidArtemisCurse.checked = attackStrategy.avoidArtemisCurse === true;
+  if (selectArtemisCurseHit) selectArtemisCurseHit.value = String(attackStrategy.artemisCurseMultiplier || 1);
   if (chkAdaptiveFailSafe) chkAdaptiveFailSafe.checked = attackStrategy.failSafeEnabled === true;
   if (inputAdaptiveFailSafePercent) inputAdaptiveFailSafePercent.value = attackStrategy.failSafePercent ?? 80;
   if (chkAdaptiveRequireTargetStamina) chkAdaptiveRequireTargetStamina.checked = attackStrategy.requireTargetStamina === true;
@@ -466,6 +476,7 @@ function loadHomeConfiguration(config) {
     });
   }
   updateAttackModuleRows();
+
 }
 
 function loadSchedulerConfiguration(config) {
@@ -603,6 +614,8 @@ if (chkAdaptiveFailSafe) {
   });
 }
 if (inputAdaptiveFailSafePercent) inputAdaptiveFailSafePercent.addEventListener('change', saveAttackStrategy);
+chkAvoidArtemisCurse?.addEventListener('change', () => { updateAttackModuleRows(); saveAttackStrategy(); });
+selectArtemisCurseHit?.addEventListener('change', saveAttackStrategy);
 if (chkAdaptiveRequireTargetStamina) chkAdaptiveRequireTargetStamina.addEventListener('change', saveAttackStrategy);
 if (chkAdaptiveNuke) {
   chkAdaptiveNuke.addEventListener('change', () => {

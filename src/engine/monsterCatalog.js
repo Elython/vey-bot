@@ -84,7 +84,10 @@ function selectGateMonster(monsters, configuredTypes, nowEpoch = Math.floor(Date
         if (perDungeonCompleted >= perDungeonLimit) continue;
       } else if ((settings.killCount || 0) <= (settings.completedCount || 0)) continue;
     }
-    if ((settings.targetDamage || 0) <= 0 || (monster.userDmg || 0) >= settings.targetDamage) continue;
+    // A phase card's overall contribution includes its earlier stage. Until
+    // Phase DMG is read from battle.php it cannot prove phase completion.
+    const contribution=Number(monster.phase)>0 ? Math.max(0,Number(monster.phaseDamage)||0) : Math.max(0,Number(monster.userDmg)||0);
+    if ((settings.targetDamage || 0) <= 0 || contribution >= settings.targetDamage) continue;
     if ((monster.hp ?? 0) < (settings.minimumHp || 0)) continue;
     if (monster.dead || monster.hp === 0) continue;
     if (monster.expire && monster.expire <= nowEpoch) continue;

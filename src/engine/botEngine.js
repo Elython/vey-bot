@@ -1,4 +1,5 @@
 const EventEmitter = require('events');
+const { CustomRunCoordinator, projectStep } = require('./customRunCoordinator');
 const { isDeepStrictEqual } = require('util');
 const { BotFSM, BotState } = require('./fsm');
 const { stateStore } = require('./stateStore');
@@ -24,12 +25,25 @@ function parseCompactAmount(value) {
 
 function targetProgressDamage(target, battle) {
   const total = Math.max(0, Number(battle?.userDamage ?? target?.userDmg) || 0);
-  const baseline = Number(target?.phaseDamageBaseline);
+  const baseline = target?.phaseDamageBaseline == null ? NaN : Number(target.phaseDamageBaseline);
   return Number.isFinite(baseline) ? Math.max(0, total - Math.max(0, baseline)) : total;
 }
 
 function isActiveDungeonCombat(target, battle) {
   return target?.isDungeon === true && Boolean(battle) && battle.isDead !== true;
+}
+
+const { LoadoutCoordinator } = require('./loadoutCoordinator');
+
+function loadoutCoordinatorFor(engine) {
+  return new LoadoutCoordinator({
+    gameController: engine.gameController, loadoutService: engine.loadoutService,
+    crystalService: engine.powerCrystalService, getConfig: () => engine.config,
+    getSelections: () => engine.appliedLoadoutSelections,
+    invalidateCombat: () => { engine.currentLoadoutSnapshot = null; engine.currentCombatContext = null; },
+    recordAction: result => engine._recordAction(result), refreshStats: () => engine.refreshStats(),
+    log: (level, message) => engine.log(level, message),
+  });
 }
 
 function shouldRefreshProgressionLoot({
@@ -60,6 +74,8 @@ class BotEngine extends EventEmitter {
     this.accountRef = this.accountKey || this.accountName;
     this.configManager = dependencies.configManager || null;
     this.config = validateConfig(dependencies.config || this.configManager?.getConfig() || {});
+    this.customRun = null;
+    this.customRunSelected = this.config.general.module === 'custom_runs';
     this.timingEngine = dependencies.timingEngine;
     this.httpClient = dependencies.httpClient;
     this.gameAPI = dependencies.gameAPI;
@@ -72,6 +88,7 @@ class BotEngine extends EventEmitter {
     this.lootLimitLedger = dependencies.lootLimitLedger || new LootLimitLedger(this.config, this.configManager);
     this.resourcePolicyEngine = dependencies.resourcePolicyEngine || null;
     this.loadoutService = dependencies.loadoutService || null;
+    this.powerCrystalService = dependencies.powerCrystalService || null;
     this.monsterCatalogService = dependencies.monsterCatalogService || null;
     this.targetDiscoveryService = dependencies.targetDiscoveryService || null;
     this.lootDiscoveryService = dependencies.lootDiscoveryService || null;
@@ -79,9 +96,12 @@ class BotEngine extends EventEmitter {
     this.xpModel = dependencies.xpModel || null;
     this.progressionEngine = dependencies.progressionEngine || null;
     this.activityHistoryStore = dependencies.activityHistoryStore || null;
+    this.accountDatabase = dependencies.accountDatabase || this.activityHistoryStore?.database || null;
     this.autoFarmService = dependencies.autoFarmService || null;
     this.objectiveModuleService = dependencies.objectiveModuleService || null;
     this.windowManager = dependencies.windowManager || null;
+    this.soloPvpService = dependencies.soloPvpService || null;
+    this.allowSoloPvp = dependencies.allowSoloPvp !== false;
     this.chapterFarmer = dependencies.chapterFarmer;
     this.getMangaTargets = dependencies.getMangaTargets || (() => []);
     this.onChapterCycleReset = dependencies.onChapterCycleReset || (() => {});
@@ -139,6 +159,10 @@ class BotEngine extends EventEmitter {
     this.objectivePreparedLootKeys = new Set();
     this.objectiveRejectedMonsterKeys = new Set();
     this.actionExecutor = dependencies.actionExecutor || new ActionExecutor({
+      SOLO_PVP_JOIN: (params, context) => this._executeSoloPvp('SOLO_PVP_JOIN', params, context),
+      SOLO_PVP_CONTROL: (params, context) => this._executeSoloPvp('SOLO_PVP_CONTROL', params, context),
+      SOLO_PVP_SKILL: (params, context) => this._executeSoloPvp('SOLO_PVP_SKILL', params, context),
+      SOLO_PVP_SURRENDER: (params, context) => this._executeSoloPvp('SOLO_PVP_SURRENDER', params, context),
       SCAN: (params, context) => this._scan(params, context.signal),
       JOIN: (params, context) => this._join(context.signal),
       ATTACK: (params, context) => this._attack(params.skill, context.signal),
@@ -179,6 +203,7 @@ class BotEngine extends EventEmitter {
       startTime: null,
     };
 
+    if(this.accountDatabase && this.accountRef)Object.assign(this.stats,this.accountDatabase.getUsageCounters?.(this.accountRef) || {});
     this.strategy.updateConfig(this.config);
     this.targetLedger.updateConfig(this.config);
     this.lootLimitLedger.updateConfig(this.config);
@@ -224,6 +249,10 @@ class BotEngine extends EventEmitter {
     const action = String(decision?.action || '').toUpperCase();
     const reason = decision?.reason || 'Waiting for the next decision.';
     const labels = {
+      SOLO_PVP_JOIN: ['active', 'Finding Solo PvP match', 'solo_pvp_join'],
+      SOLO_PVP_CONTROL: ['active', 'Setting Solo PvP strategy', 'solo_pvp_control'],
+      SOLO_PVP_SKILL: ['active', 'Playing Solo PvP', 'solo_pvp_skill'],
+      SOLO_PVP_SURRENDER: ['active', 'Surrendering Solo PvP match', 'solo_pvp_surrender'],
       ATTACK: ['active', 'Attacking', 'attack'],
       JOIN: ['active', 'Joining battle', 'join'],
       SCAN: ['scanning', 'Finding a target', 'target_scan'],
@@ -270,6 +299,10 @@ class BotEngine extends EventEmitter {
     // independently so malformed counters/settings can never bypass the same
     // canonical bounds merely because persistence was intentionally skipped.
     this.config = validateConfig(deepMerge(this.config, patch));
+    if (patch.general?.module) {
+      this.customRunSelected = this.config.general.module === 'custom_runs';
+      this.customRun = null;
+    }
     this.strategy.updateConfig(this.config);
     this.targetLedger.updateConfig(this.config);
     this.lootLimitLedger.updateConfig(this.config);
@@ -330,6 +363,8 @@ class BotEngine extends EventEmitter {
     const previousProgression = this.config.progression;
     const previousLooting = this.config.looting;
     this.config = this.configManager ? this.configManager.replace(config) : validateConfig(config);
+    this.customRunSelected = this.config.general.module === 'custom_runs';
+    this.customRun = null;
     const progressionLootInputsChanged = !isDeepStrictEqual(previousProgression, this.config.progression)
       || !isDeepStrictEqual(previousLooting, this.config.looting);
     const preserveProgressionSnapshot = options.preserveProgressionSnapshot === true
@@ -392,12 +427,50 @@ class BotEngine extends EventEmitter {
     });
   }
 
+  _applyCustomRunStep(step) {
+    if (!step) return;
+    const previous = this.config.progression;
+    this.config = validateConfig(projectStep(this.config, step));
+    this.strategy.updateConfig(this.config);
+    this.targetLedger.updateConfig(this.config);
+    this.lootLimitLedger.updateConfig(this.config);
+    this.resourcePolicyEngine?.updateConfig(this.config);
+    this.progressionEngine?.updateConfig(this.config);
+    if (!isDeepStrictEqual(previous, this.config.progression)) this._resetProgressionLootSnapshot();
+    this.battleManager.clear();this.currentTarget=null;this.currentCombatContext=null;this.currentObjectiveState=null;
+    this.emit('discovery-demand-changed');
+    this.emit('custom-run-step', this.config);
+    this.log('INFO','Custom Run: '+this.customRun.run.name+' → step '+(this.customRun.index+1)+' ('+step.module+')');
+  }
+
+  _observeCustomRun(kind) {
+    if (!this.customRun) return;
+    if(this.isRunning===false || this.isPaused===true || this.runController?.signal.aborted){this.customRun.observe('blocked');return;}
+    const battle=this.battleManager.getCurrentBattle();
+    const solo=this.soloPvpService?.getStatus?.();
+    const protectedState=Boolean(this.pendingMutation||this.progressionLootBatchActive||battle?.phaseDuel
+      || this.customRunCubeStatus?.()?.pendingJoin
+      || (this.customRunCubeStatus?.()?.commitment && ['joined','live'].includes(this.customRunCubeStatus?.()?.state))
+      ||(this.config.general.module==='pvp'&&['battle','loading'].includes(solo?.phase)));
+    const next=this.customRun.observe(kind,protectedState);
+    if(next)this._applyCustomRunStep(next);
+  }
+
   start(options = {}) {
+    const selectedRun=this.config.customRuns?.runs?.[this.config.customRuns?.activeId];
+    if(!this.allowSoloPvp && (this.config.general.module==='pvp'||(this.customRunSelected&&selectedRun?.steps.some(step=>step.enabled&&step.module==='pvp')))){
+      this.log('WARN','Solo PvP is not available in release builds');return false;
+    }
+    if (!this.isRunning && !this.loopPromise && this.customRunSelected) {
+      const run=this.config.customRuns.runs[this.config.customRuns.activeId];
+      if(!run||!run.steps.some(s=>s.enabled)){this.log('WARN','Custom Run needs an enabled valid step');return false;}
+      this.customRun=new CustomRunCoordinator(run);this._applyCustomRunStep(this.customRun.step);
+    }
+    if (!this.isRunning && !this.loopPromise && options.preserveProgressionSnapshot !== true) this.soloPvpService?.resetRun?.();
     if (this.isRunning || this.loopPromise) return false;
     this.isRunning = true;
     this.isPaused = false;
     this.consecutiveErrors = 0;
-    this.stats.deaths = 0;
     this.stats.startTime = Date.now();
     const runController = new AbortController();
     this.runController = runController;
@@ -454,6 +527,7 @@ class BotEngine extends EventEmitter {
   pause(reason = 'Paused by user') {
     if (!this.isRunning || this.isPaused) return false;
     this.isPaused = true;
+    this.customRun?.observe('blocked');
     this.timingEngine.cancelAll();
     this.httpClient.cancelAll();
     this._resetProgressionLootSnapshot();
@@ -481,6 +555,11 @@ class BotEngine extends EventEmitter {
 
   resume() {
     if (!this.isRunning || !this.isPaused) return false;
+    if(this.customRunSelected && !this.customRun){
+      const run=this.config.customRuns.runs[this.config.customRuns.activeId];
+      if(!run||!run.steps.some(s=>s.enabled)){this.log('WARN','Custom Run needs an enabled valid step');return false;}
+      this.customRun=new CustomRunCoordinator(run);this._applyCustomRunStep(this.customRun.step);
+    }
     this.isPaused = false;
     if (this.config.general?.module === 'auto_farm') this.autoFarmSynchronized = false;
     this.autoFarmPveCleared = false;
@@ -561,10 +640,10 @@ class BotEngine extends EventEmitter {
     const refresh = (async () => {
       const stats = await this.gameReader.fetchStatsNow();
       this.lastStatsRefresh = Date.now();
-      const epoch = stats.serverEpoch ?? Math.floor(Date.now() / 1000);
+      const epoch = Number(stats.serverEpoch);
       const offset = stats.serverTzOff ?? 19800;
       const cycleId = Math.floor((epoch + offset) / (12 * 60 * 60));
-      if (cycleId !== this.farmCycleId) {
+      if (Number.isFinite(epoch) && epoch > 0 && (this.farmCycleId === null || cycleId > this.farmCycleId)) {
         this.chapterFarmer.resetCycle();
         this.stats.energyFarmed = 0;
         this.stats.chaptersFarmed = 0;
@@ -574,7 +653,7 @@ class BotEngine extends EventEmitter {
           this.log('INFO', 'A new 12-hour farming cycle was detected. Session chapter tracking was reset.');
         }
       }
-      this.farmCycleId = cycleId;
+      if (Number.isFinite(epoch) && epoch > 0) this.farmCycleId = Math.max(this.farmCycleId ?? cycleId, cycleId);
       this.emit('telemetry', this.getTelemetry());
       return stats;
     })();
@@ -587,6 +666,7 @@ class BotEngine extends EventEmitter {
   }
 
   getTelemetry() {
+    if(this.accountRef)this.accountDatabase?.setUsageCounters?.(this.accountRef,{deaths:this.stats.deaths,healthPotionsUsed:this.stats.healthPotionsUsed,staminaPotionsUsed:this.stats.staminaPotionsUsed,manaPotionsUsed:this.stats.manaPotionsUsed});
     const runtimeSeconds = this.stats.startTime ? Math.floor((Date.now() - this.stats.startTime) / 1000) : 0;
     const currentBattle = this.battleManager.getCurrentBattle();
     return {
@@ -594,6 +674,8 @@ class BotEngine extends EventEmitter {
       currentAction: this.currentAction,
       currentReason: this.currentReason,
       runtimeStatus: { ...this.runtimeStatus },
+      soloPvp: this.soloPvpService?.getStatus() || null,
+      customRun: this.customRun?.status() || null,
       module: this.moduleRegistry.describe(this.config.general),
       target: this.currentTarget ? {
         ...this.currentTarget,
@@ -696,6 +778,17 @@ class BotEngine extends EventEmitter {
           continue;
         }
 
+        // Recovery is independent of selected Gear policy: Default/Off cannot bypass an unresolved POST.
+        if (this.powerCrystalService?.hasPendingMutation?.()) {
+          await this.powerCrystalService.reconcilePending(signal);
+          if (!this.isRunning || signal.aborted) break;
+        }
+
+        if(this.customRun?.status().backoff){
+          this.currentAction='WAIT';this.currentReason=this.customRun.reason;
+          this.emit('telemetry',this.getTelemetry());
+          await this.timingEngine.sleepRandom(1000,1500,signal);continue;
+        }
         const liveState = await this.gameReader.readState();
         if (!this.isRunning || signal.aborted) break;
         if (!liveState.isConnected) {
@@ -721,8 +814,9 @@ class BotEngine extends EventEmitter {
           break;
         }
 
+        const soloPvpModule = this.config.general?.module === 'pvp';
         const maxDeaths = Math.max(0, Math.trunc(Number(this.config.resources?.health?.maxDeaths) || 0));
-        if (maxDeaths > 0 && this.stats.deaths >= maxDeaths) {
+        if (!soloPvpModule && maxDeaths > 0 && this.stats.deaths >= maxDeaths) {
           const reason = `Maximum deaths reached (${this.stats.deaths}/${maxDeaths})`;
           this.log('WARN', `${reason}. Bot stopped.`);
           this.stop(reason, 'max_deaths');
@@ -739,7 +833,7 @@ class BotEngine extends EventEmitter {
           await this.refreshStats();
         }
         if (!this.isRunning || signal.aborted) break;
-        if (this.currentTarget && loadedBattle) {
+        if (!soloPvpModule && this.currentTarget && loadedBattle) {
           await Promise.all([this._prepareCombatContext(), this._prepareClassSkills()]);
           if (!this.isRunning || signal.aborted) break;
         }
@@ -751,13 +845,18 @@ class BotEngine extends EventEmitter {
           this.currentObjectiveState = null;
         }
         const gameState = this._gatherState(liveState);
+        if (soloPvpModule) {
+          if (!this.soloPvpService) throw new Error('Solo PvP service is unavailable');
+          gameState.soloPvpDecision = await this.soloPvpService.nextDecision(this.config.soloPvp, { signal });
+          if (!this.isRunning || signal.aborted) break;
+        }
         gameState.objective = this.currentObjectiveState;
         const autoFarmModule = this.config.general?.module === 'auto_farm';
         const hardStopPercent = Math.max(0, Number(this.config.resources?.stamina?.stopBelow) || 0);
         const currentStaminaPercent = Number(gameState.maxStamina) > 0
           ? (Math.max(0, Number(gameState.stamina) || 0) / Number(gameState.maxStamina)) * 100
           : null;
-        if (!autoFarmModule && hardStopPercent > 0 && currentStaminaPercent !== null
+        if (!autoFarmModule && !soloPvpModule && hardStopPercent > 0 && currentStaminaPercent !== null
           && currentStaminaPercent < hardStopPercent) {
           this.currentReason = `Stamina is ${currentStaminaPercent.toFixed(1)}%, below the ${hardStopPercent}% hard stop`;
           this._stopFromPolicy('stamina_hard_stop');
@@ -784,7 +883,7 @@ class BotEngine extends EventEmitter {
           batchActive: this.progressionLootBatchActive,
           batchCandidateCount: this.progressionLootSnapshot.candidates.length,
         });
-        if (!autoFarmModule && !objectiveModule && this.config.progression?.useLootForLeveling === true
+        if (!autoFarmModule && !objectiveModule && !soloPvpModule && this.config.progression?.useLootForLeveling === true
           && refreshProgressionLoot) {
           const sourceCount = this._progressionAreaKeys().length;
           this._setRuntimeStatus(
@@ -796,7 +895,7 @@ class BotEngine extends EventEmitter {
           await this._refreshProgressionLoot(gameState.monsterDead === true);
           if (!this.isRunning || signal.aborted) break;
         }
-        this.currentProgressionDecision = (autoFarmModule || objectiveModule) ? null : this.progressionEngine?.evaluate({
+        this.currentProgressionDecision = (autoFarmModule || objectiveModule || soloPvpModule) ? null : this.progressionEngine?.evaluate({
           accountName: this.accountName,
           state: gameState,
           lootCandidates: this.progressionLootSnapshot.candidates,
@@ -804,7 +903,7 @@ class BotEngine extends EventEmitter {
           configOverride: this.progressionLootBatchActive ? this.progressionLootBatchConfig : null,
         }) || null;
         gameState.progression = this.currentProgressionDecision || {};
-        this._planCombatTurn(gameState);
+        if (!soloPvpModule) this._planCombatTurn(gameState);
         let decision;
         if (gameState.currentBattle?.phaseDuel) {
           decision = this.strategy.decideNextAction(gameState);
@@ -845,6 +944,7 @@ class BotEngine extends EventEmitter {
         this.pendingMutation = MUTATING_ACTIONS.has(decision.action)
           ? this._captureMutationContext(decision, gameState)
           : null;
+        this.lastResult = null;
         const executionResult = await this.actionExecutor.execute(decision, {
           decision,
           gameState,
@@ -861,12 +961,16 @@ class BotEngine extends EventEmitter {
         }
         this.pendingMutation = null;
         this.consecutiveErrors = 0;
+        const noTargets=(executionResult||this.lastResult)?.eligibleTargets===0;
+        const idle=(decision.action==='WAIT'&&['no_work','resources_exhausted'].includes(decision.waitKind))||(decision.action==='SCAN'&&noTargets);
+        this._observeCustomRun(idle?'idle':['SCAN','WAIT'].includes(decision.action)?'blocked':'work');
         this.emit('telemetry', this.getTelemetry());
         const fastDungeonCycle = (gameState.isDungeon === true || decision.params?.kind === 'dungeon')
           && ['SCAN', 'JOIN', 'ATTACK', 'HEAL'].includes(decision.action);
         const fastLootCycle = ['LOOT', 'CLAIM_LOOT', 'CLAIM_OBJECTIVE_LOOT'].includes(decision.action);
         if (!fastDungeonCycle && !fastLootCycle) await this.timingEngine.sleepRandom(300, 800, signal);
       } catch (error) {
+        this.customRun?.observe('blocked');
         if (this._isCancellationError(error, signal)) {
           if (!this.isRunning || signal.aborted) break;
           continue;
@@ -899,6 +1003,14 @@ class BotEngine extends EventEmitter {
             if (!this._isCancellationError(sleepError, signal)) throw sleepError;
             if (!this.isRunning || signal.aborted) break;
           }
+          continue;
+        }
+
+        if (String(error.code || '').startsWith('CRYSTAL_MUTATION_')) {
+          this.pendingMutation = null;
+          this.lastResult = { success: false, ambiguous: true, error: error.message, code: error.code };
+          this.log('ERROR', error.message);
+          this.pause('Safety pause: Crystal movement could not be confirmed');
           continue;
         }
 
@@ -991,7 +1103,10 @@ class BotEngine extends EventEmitter {
       supportAbilitySkill: null,
       plannedDamageSkill: null,
       currentBattle: battle,
+      artemisMarkTurns: Number(this._ensureAbilityTurnState(battle).artemisMarkTurns) || 0,
       currentTargetId: this.currentTarget?.id || null,
+      combatTargetEligible: Boolean(this.currentTarget && this.targetLedger.isAllowed(this.currentTarget, battle, this.config.general)),
+      progressionLootBatchActive: this.progressionLootBatchActive === true,
       isDungeon: Boolean(this.currentTarget?.isDungeon || battle?.battleLocator?.isDungeon),
       monsterHp: battle?.monsterHp ?? this.currentTarget?.hp ?? null,
       monsterDead: Boolean(battle?.isDead),
@@ -1028,7 +1143,7 @@ class BotEngine extends EventEmitter {
     const plannedDamage = this.strategy?.attackPlanner?.plan(gameState) || null;
     gameState.plannedDamageSkill = plannedDamage;
     const objectiveAbilityId = Math.max(0, Number(gameState.objectiveAbilityId) || 0);
-    if (objectiveAbilityId < 1 && this.currentTarget?.allowAbilities === true) {
+    if (objectiveAbilityId < 1 && this.currentTarget?.allowAbilities === true && plannedDamage?.planning?.source !== 'artemis-curse') {
       gameState.supportAbilitySkill = this._supportAbilitySkill(
         gameState.currentBattle,
         stateStore.getState(),
@@ -1185,6 +1300,7 @@ class BotEngine extends EventEmitter {
     // scheduler tolerant of that shape rather than failing during an attack.
     this.abilityTurnState.usedAtTurn ||= {};
     this.abilityTurnState.useCounts ||= {};
+    this.abilityTurnState.blockedSupportRoles ||= {};
     return this.abilityTurnState;
   }
 
@@ -1196,6 +1312,7 @@ class BotEngine extends EventEmitter {
     if (expectedRole && role !== expectedRole) return false;
     if (role === 'passive' || role === 'select') return false;
     const turnState = this._ensureAbilityTurnState(battle);
+    if (turnState.blockedSupportRoles[role]) return false;
     const uses = Math.max(0, Number(turnState.useCounts[id]) || 0);
     const maxUses = Math.max(0, Number(policy.maxUses) || 0);
     if (maxUses > 0 && uses >= maxUses) return false;
@@ -1259,6 +1376,8 @@ class BotEngine extends EventEmitter {
       areaName: source?.areaName || source?.dungeonName || source?.instanceName || area?.label || '',
       monsterKey: source?.monsterKey || '',
       monsterName: source?.name || 'Unknown monster',
+      phase: Number(source?.phase) || null,
+      module: this.config.general?.module || '',
       monsterId,
       instanceId,
       boss: source?.boss === true,
@@ -1579,6 +1698,8 @@ class BotEngine extends EventEmitter {
   }
 
   _targetManaPotionState(battle, stored = stateStore.getState()) {
+    if (this.config.combat?.attackStrategy?.avoidArtemisCurse === true
+      && Number(this._ensureAbilityTurnState(battle).artemisMarkTurns) > 0) return null;
     const manaPolicy = this.config.resources?.mana || {};
     if (manaPolicy.allowPotions !== true) return null;
     const currentMana = Math.max(0, Number(battle?.playerMana ?? stored.mp?.current) || 0);
@@ -2070,7 +2191,16 @@ class BotEngine extends EventEmitter {
 
   async _wait(reason, signal) {
     this._transition(BotState.IDLE, reason);
+    if (this.config.general?.module === 'pvp') return this.timingEngine.sleepRandom(this.soloPvpService?.getStatus()?.phase === 'battle' ? 900 : 30000, this.soloPvpService?.getStatus()?.phase === 'battle' ? 1100 : 45000, signal);
     return this.timingEngine.sleepRandom(5000, 15000, signal);
+  }
+
+  async _executeSoloPvp(action, params, context = {}) {
+    if (!this.soloPvpService) throw new Error('Solo PvP service is unavailable');
+    const result = await this.soloPvpService.execute(action, params, this.config.soloPvp, context);
+    this.lastResult = result;
+    if (result.denied) this.log('WARN', result.message);
+    return result;
   }
 
   _phaseInstanceKey(areaKey, monsterId) {
@@ -2144,9 +2274,9 @@ class BotEngine extends EventEmitter {
         this.phaseDuelProbeCache.set(instanceKey, { expiresAt: now + 60_000, verified: false });
         continue;
       }
-      const baseline = hasKnownBaseline && Number.isFinite(Number(knownBaseline))
-        ? Number(knownBaseline)
-        : Math.max(0, Number(battle?.userDamage ?? candidate.userDmg) || 0);
+      const baseline = battle?.phaseDamage != null
+        ? Math.max(0,(Number(battle.userDamage ?? candidate.userDmg)||0)-Number(battle.phaseDamage))
+        : hasKnownBaseline && Number.isFinite(Number(knownBaseline)) ? Number(knownBaseline) : Math.max(0,Number(battle?.userDamage ?? candidate.userDmg)||0);
       this.phaseDamageBaselines.set(instanceKey, baseline);
       this.phaseDuelProbeCache.delete(instanceKey);
       this.monsterCatalogService?.markPhaseDuel?.(areaKey, candidate.id, 3);
@@ -2284,18 +2414,18 @@ class BotEngine extends EventEmitter {
       },
       boss: target.boss === true,
       phase: Number(target.phase) || null,
-      phaseDamageBaseline: Number.isFinite(Number(target.phaseDamageBaseline))
+      phaseDamageBaseline: target.phaseDamageBaseline != null && Number.isFinite(Number(target.phaseDamageBaseline))
         ? Number(target.phaseDamageBaseline)
         : null,
     };
     const battle = target.phaseBattle && typeof this.battleManager.adoptBattle === 'function'
       ? this.battleManager.adoptBattle(target.phaseBattle)
       : await this.battleManager.loadBattle(isDungeon ? target.battleRef : (target.battleId || target.id));
-    if (battle.phaseDuel) {
+    if (battle.phaseDuel || this.currentTarget.phase === 3) {
       const instanceKey = this._phaseInstanceKey(areaKey, target.id);
-      const baseline = this.phaseDamageBaselines.has(instanceKey)
-        ? Number(this.phaseDamageBaselines.get(instanceKey))
-        : Math.max(0, Number(battle.userDamage ?? target.userDmg) || 0);
+      const baseline = battle.phaseDamage != null
+        ? Math.max(0,(Number(battle.userDamage ?? target.userDmg)||0)-Number(battle.phaseDamage))
+        : this.phaseDamageBaselines.has(instanceKey) ? Number(this.phaseDamageBaselines.get(instanceKey)) : Math.max(0,Number(battle.userDamage ?? target.userDmg)||0);
       this.phaseDamageBaselines.set(instanceKey, baseline);
       Object.assign(this.currentTarget, {
         phase: 3,
@@ -2321,7 +2451,8 @@ class BotEngine extends EventEmitter {
       this.battleManager.clear();
       this.currentTarget = null;
       this.currentCombatContext = null;
-      return this._wait('No enabled Boss Hunt targets are configured', signal);
+      await this._wait('No enabled Boss Hunt targets are configured', signal);
+      return {success:true,eligibleTargets:0};
     }
     const maxAgeMs = Math.max(
       15_000,
@@ -2342,7 +2473,7 @@ class BotEngine extends EventEmitter {
       } catch (error) {
         if (error?.code === 'READ_ABORTED' || error?.name === 'AbortError') throw error;
         this.log('INFO', `Boss Hunt skipped ${area.label}: ${error.message}`);
-        return { areaKey: area.key, monsters: [] };
+        return { areaKey: area.key, monsters: [], failed: true };
       }
     }));
     const target = this.targetLedger.selectBossTarget(settled);
@@ -2353,7 +2484,7 @@ class BotEngine extends EventEmitter {
       this._transition(BotState.IDLE, 'No configured boss is currently active and eligible');
       const delay = Math.max(1, Number(this.config.scheduler?.targetScanIntervalSeconds) || 1) * 1000;
       await this.timingEngine.sleepRandom(delay, Math.ceil(delay * 1.15), signal);
-      return { success: true, areasScanned: areas.length, eligibleTargets: 0 };
+      return { success: true, areasScanned: areas.length, eligibleTargets: settled.some(area=>area.failed) ? null : 0 };
     }
     const route = this.moduleRegistry.resolveArea(target.areaKey);
     if (!route) return this._wait(`Boss Hunt area ${target.areaKey} is unavailable`, signal);
@@ -2446,50 +2577,12 @@ class BotEngine extends EventEmitter {
     };
   }
 
-  async _applyLoadout({ kind, selection, forceVerify = false }, signal) {
-    const setNumber = Number(String(selection).match(/^quick_set_(\d+)$/)?.[1]);
-    if (!Number.isInteger(setNumber) || setNumber < 1 || setNumber > 10) {
-      return { success: false, message: 'Invalid Quick Set selection' };
-    }
-    if (!forceVerify && this.appliedLoadoutSelections[kind] === selection) {
-      return { success: true, skipped: true, message: `${selection} ${kind} is already active` };
-    }
-    if (this.loadoutService) {
-      try {
-        if (await this.loadoutService.isSavedSetActive({ kind, setNumber, context: 'attack' })) {
-          this.appliedLoadoutSelections[kind] = selection;
-          return { success: true, skipped: true, message: `${selection} ${kind} already matches the active set` };
-        }
-      } catch (error) {
-        this.log('WARN', `Could not verify active ${kind} set before applying: ${error.message}`);
-      }
-    }
-    const result = await this.gameController.applyQuickSet({
-      setNumber,
-      targetSet: 'attack',
-      applyType: kind === 'gear' ? 'equipments' : 'pets',
-    }, signal);
-    this._recordAction(result);
-    if (!result.success) throw new Error(result.message || `Quick Set ${setNumber} could not be applied`);
-    this.appliedLoadoutSelections[kind] = selection;
-    this.loadoutService?.invalidateActive('Quick Set applied');
-    this.currentLoadoutSnapshot = null;
-    this.currentCombatContext = null;
-    if (typeof this.loadoutService?.getActiveLoadout === 'function') {
-      try {
-        await this.loadoutService.getActiveLoadout({
-          gearContext: 'attack',
-          petContext: 'attack',
-          force: true,
-          priority: ReadPriority.MUTATION_REVALIDATION,
-          signal,
-        });
-      } catch (error) {
-        this.log('WARN', `Quick Set applied but active loadout revalidation was deferred: ${error.message}`);
-      }
-    }
-    await this.refreshStats();
-    return result;
+  async _routePowerCrystals(kind, selection, signal) {
+    return loadoutCoordinatorFor(this).routeCrystals(kind, selection, signal);
+  }
+
+  async _applyLoadout(params, signal) {
+    return loadoutCoordinatorFor(this).apply(params, signal);
   }
 
   async _attack(skill, signal) {
@@ -2529,8 +2622,25 @@ class BotEngine extends EventEmitter {
       this.autoFarmPveCleared = true;
       return { ...result, recovered: true, retryAllowed: true };
     }
+    const fightState = this._ensureAbilityTurnState(this.battleManager.getCurrentBattle());
+    if (skill?.supportAbility === true && /couldn['’]t pierce the monster['’]s divine shield\.\s*No stamina spent\./i.test(result.message || '')) {
+      const role = skill.abilityRole || this.config.combat?.abilityPolicies?.[String(skill.id)]?.role;
+      if (['buff', 'debuff'].includes(role)) fightState.blockedSupportRoles[role] = true;
+      this.log('INFO', `${skill.name || 'Support ability'} blocked by divine shield; ${role || 'support'} disabled for this fight. No resources spent.`);
+      this.lastResult = { ...result, success: true, skipped: true, noResourcesSpent: true };
+      return this.lastResult;
+    }
     if (skill?.supportAbility !== true) this.stats.attacks++;
     if (result.success) {
+      if (skill?.supportAbility !== true) {
+        fightState.artemisMarkTurns = Math.max(0, (Number(fightState.artemisMarkTurns) || 0) - 1);
+        const ownLog = (result.logs || []).find(entry => String(entry?.USERNAME || '').trim() === String(this.accountName || '').trim());
+        const mark = [result.message || '', ownLog?.EXTRA_INFO || ''].join(' ').match(/Artemis marked you for (\d+) turns?/i);
+        if (mark) fightState.artemisMarkTurns = Math.min(100, Number(mark[1]));
+        if (this.config.combat?.attackStrategy?.avoidArtemisCurse === true && fightState.artemisMarkTurns > 0) {
+          this.log('INFO', `Artemis mark active: ${fightState.artemisMarkTurns} turn(s); using the configured curse hit.`);
+        }
+      }
       if (skill?.kind === 'class-ability') {
         const abilityId = String(skill.id);
         this.abilityTurnState.usedAtTurn[abilityId] = this.abilityTurnState.attackTurn;

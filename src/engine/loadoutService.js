@@ -112,12 +112,10 @@ class LoadoutService {
     this.now = options.now || (() => Date.now());
     this.readCoordinator = options.readCoordinator || null;
     this.mode = options.mode || 'shared';
-    if (!['shared', 'legacy'].includes(this.mode)) throw new Error(`Unsupported loadout mode: ${this.mode}`);
-    if (this.mode === 'shared' && !this.readCoordinator) throw new TypeError('Shared loadouts require ReadCoordinator');
-    this.accountKey = this.mode === 'shared' ? assertAccountKey(options.accountKey) : null;
-    this.latest = new Map();
+    if (this.mode !== 'shared') throw new Error(`Unsupported loadout mode: ${this.mode}`);
+    if (!this.readCoordinator) throw new TypeError('Shared loadouts require ReadCoordinator');
+    this.accountKey = assertAccountKey(options.accountKey);
     this.snapshots = new Map();
-    this.inFlight = new Map();
     this.activeResourceKeys = new Set();
     this.sourceRevision = 0;
   }
@@ -130,8 +128,6 @@ class LoadoutService {
     this.gameAPI = gameAPI;
     this.accountName = accountName;
     this.invalidateActive('Game session changed');
-    this.latest.clear();
-    this.inFlight.clear();
     this.snapshots.clear();
   }
 
@@ -176,7 +172,7 @@ class LoadoutService {
     if (!this.gameAPI) throw new Error('Game session not active');
     const resourceKey = activeLoadoutResourceKey(gearContext, petContext);
     this.activeResourceKeys.add(resourceKey);
-    if (this.mode === 'shared') {
+    {
       const observation = await this._sharedRead(resourceKey, {
         force,
         priority,
@@ -187,7 +183,6 @@ class LoadoutService {
       this._rememberSnapshot(snapshot);
       return clone(snapshot);
     }
-    return this._legacyActiveLoadout(gearContext, petContext, force);
   }
 
   getSnapshot(hash) {
@@ -196,9 +191,6 @@ class LoadoutService {
   }
 
   invalidateActive(reason = 'Active loadout invalidated') {
-    this.latest.clear();
-    this.inFlight.clear();
-    if (this.mode !== 'shared') return true;
     let changed = false;
     for (const resourceKey of this.activeResourceKeys) {
       changed = this.readCoordinator.invalidate(
@@ -252,7 +244,7 @@ class LoadoutService {
     const normalizedContext = requireContext(context);
     const normalizedSet = requireSetNumber(setNumber);
     if (!this.gameAPI) throw new Error('Game session not active');
-    if (this.mode === 'shared') {
+    {
       return this._sharedRead(savedLoadoutResourceKey(normalizedKind, normalizedContext, normalizedSet), {
         force,
         priority,
@@ -260,7 +252,6 @@ class LoadoutService {
         signal,
       });
     }
-    return clone(await this._fetchSavedSet(normalizedKind, normalizedSet, normalizedContext));
   }
 
   async _sharedRead(resourceKey, { force, priority, maxAgeMs, signal }) {
@@ -282,25 +273,6 @@ class LoadoutService {
         this.readCoordinator.invalidate(this.accountKey, WorldDomain.LOADOUT, resourceKey, 'Loadout refresh failed');
       }
       throw error;
-    }
-  }
-
-  async _legacyActiveLoadout(gearContext, petContext, force) {
-    const cacheKey = `${gearContext}:${petContext}`;
-    const cached = this.latest.get(cacheKey);
-    if (!force && cached && this.now() - cached.readAt <= this.cacheMaxAgeMs) return clone(cached.snapshot);
-    if (this.inFlight.has(cacheKey)) return clone(await this.inFlight.get(cacheKey));
-
-    const request = this._fetchActiveLoadout(gearContext, petContext, Number(this.now()))
-      .then(observation => ({ ...observation, accountName: this.accountName }));
-    this.inFlight.set(cacheKey, request);
-    try {
-      const snapshot = await request;
-      this.latest.set(cacheKey, { readAt: this.now(), snapshot });
-      this._rememberSnapshot(snapshot);
-      return clone(snapshot);
-    } finally {
-      if (this.inFlight.get(cacheKey) === request) this.inFlight.delete(cacheKey);
     }
   }
 

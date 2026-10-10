@@ -1,6 +1,4 @@
 const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
 const { getMonsterArea } = require('./monsterCatalog');
 const { getDataPath } = require('../dataDirectory');
 const {
@@ -15,10 +13,6 @@ const LOOT_DISCOVERY_SCHEMA_VERSION = 1;
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
-}
-
-function accountKey(accountName) {
-  return crypto.createHash('sha256').update(String(accountName || '')).digest('hex');
 }
 
 function stableCandidate(candidate = {}) {
@@ -121,29 +115,25 @@ class LootDiscoveryService {
     this.worldStateAccountKey = options.accountKey ? assertAccountKey(options.accountKey) : null;
     this.accountRef = this.worldStateAccountKey || this.accountName;
     this.mode = options.mode || 'shared';
-    if (!['shared', 'legacy'].includes(this.mode)) throw new Error(`Unsupported Loot discovery mode: ${this.mode}`);
-    if (this.mode === 'shared' && (!this.readCoordinator || !this.worldStateAccountKey
+    if (this.mode !== 'shared') throw new Error(`Unsupported Loot discovery mode: ${this.mode}`);
+    if ((!this.readCoordinator || !this.worldStateAccountKey
       || !this.areaDirectoryService || !this.accountDatabase)) {
       throw new TypeError('Shared Loot discovery requires ReadCoordinator, accountKey, AreaDirectoryService, and AccountDatabase');
     }
     this.sourceRevision = 0;
-    this.inFlight = new Map();
     this.scanChain = Promise.resolve();
-    this.data = this.accountDatabase ? null : this._read();
     this.accountDatabase?.importLegacyLootDiscovery?.(this.filePath);
   }
 
   list(areaKey = null) {
     if (areaKey) {
-      if (this.mode === 'shared') {
+      {
         const observed = this.readCoordinator.peek(this.worldStateAccountKey, WorldDomain.LOOT_CANDIDATES, areaKey);
         if (observed?.value) return this._view(observed.value);
       }
       return this._view(this._saved(areaKey));
     }
-    const snapshots = this.accountDatabase
-      ? this.accountDatabase.listLootSnapshots(this.accountRef)
-      : Object.values(this._account().areas);
+    const snapshots = this.accountDatabase.listLootSnapshots(this.accountRef);
     return snapshots
       .sort((a, b) => Number(b.refreshedAt || 0) - Number(a.refreshedAt || 0))
       .map(snapshot => this._view(snapshot));
@@ -169,7 +159,7 @@ class LootDiscoveryService {
           signal,
         });
       } catch (error) {
-        if (this.mode === 'shared' && error?.code !== 'READ_ABORTED' && error?.name !== 'AbortError') {
+        if (error?.code !== 'READ_ABORTED' && error?.name !== 'AbortError') {
           this.invalidate(areaKey, 'loot directory refresh failed');
         }
         throw error;
@@ -194,59 +184,9 @@ class LootDiscoveryService {
         throw error;
       }
     }
-    const saved = this._saved(areaKey);
-    if (!force && saved && this.now() - Number(saved.refreshedAt || 0) < Math.max(0, maxAgeMs)) return this._view(saved);
-    if (this.inFlight.has(areaKey)) return this._view(await this.inFlight.get(areaKey));
-    const perform = async () => {
-      let directoryInstances = null;
-      if (area?.type === 'dungeon' && this.areaDirectoryService) {
-        if (resolvedDirectory?.guildMember === false) {
-          const snapshot = unavailableSnapshot(area, this._saved(areaKey), this.now(), {
-            state: 'unavailable',
-            available: false,
-            verified: true,
-            reason: resolvedDirectory.reason || 'not_in_guild',
-            source: 'guild_dungeon.php',
-          });
-          this._save(areaKey, snapshot);
-          return snapshot;
-        }
-        directoryInstances = resolvedDirectory?.instances
-          || this.areaDirectoryService.peekDirectory?.()?.instances
-          || [];
-      }
-      const result = await this.monsterCatalogService.discoverLootCandidates(areaKey, { directoryInstances });
-      const candidates = Array.isArray(result.candidates) ? result.candidates.map(candidate => clone(candidate)) : [];
-      const hash = semanticHash(candidates);
-      const previous = this._saved(areaKey);
-      const snapshot = {
-        recognized: result.recognized === true,
-        available: result.available !== false,
-        availability: clone(result.availability || null),
-        areaKey,
-        areaName: result.area?.label || areaKey,
-        areaType: result.area?.type || '',
-        hash,
-        changed: !previous || previous.hash !== hash,
-        refreshedAt: this.now(),
-        candidates: previous?.hash === hash ? previous.candidates : candidates,
-        enrichedByConfig: previous?.hash === hash ? (previous.enrichedByConfig || {}) : {},
-        errors: clone(result.errors || []),
-      };
-      this._save(areaKey, snapshot);
-      return snapshot;
-    };
-    const scan = this._enqueue(perform);
-    this.inFlight.set(areaKey, scan);
-    try {
-      return this._view(await scan);
-    } finally {
-      if (this.inFlight.get(areaKey) === scan) this.inFlight.delete(areaKey);
-    }
   }
 
   async collect(request = {}) {
-    if (this.mode !== 'shared') throw new Error('Legacy Loot discovery is not a shared collector');
     assertAccountScope(this.worldStateAccountKey, request.accountKey);
     const areaKey = request.resourceKey;
     const area = getMonsterArea(areaKey);
@@ -324,7 +264,6 @@ class LootDiscoveryService {
   }
 
   invalidate(areaKey, reason = 'loot candidates invalidated') {
-    if (this.mode !== 'shared') return false;
     return this.readCoordinator.invalidate(
       this.worldStateAccountKey,
       WorldDomain.LOOT_CANDIDATES,
@@ -344,12 +283,7 @@ class LootDiscoveryService {
 
   purgeAccount(accountName = this.accountRef) {
     if (!accountName) return false;
-    if (this.accountDatabase) return this.accountDatabase.clearLootSnapshots(accountName);
-    const key = accountKey(accountName);
-    if (!this.data.accounts[key]) return false;
-    delete this.data.accounts[key];
-    this._write();
-    return true;
+    return this.accountDatabase.clearLootSnapshots(accountName);
   }
 
   async progressionCandidates(areaKey, configuredLoot = null, options = {}) {
@@ -400,45 +334,14 @@ class LootDiscoveryService {
     return clone(view);
   }
 
-  _account() {
-    const key = accountKey(this.accountName);
-    this.data.accounts[key] ||= { areas: {} };
-    return this.data.accounts[key];
-  }
-
   _saved(areaKey) {
-    return this.accountDatabase
-      ? this.accountDatabase.getLootSnapshot(this.accountRef, areaKey)
-      : this._account().areas[areaKey];
+    return this.accountDatabase.getLootSnapshot(this.accountRef, areaKey);
   }
 
   _save(areaKey, snapshot) {
-    if (this.accountDatabase) {
-      this.accountDatabase.setLootSnapshot(this.accountRef, areaKey, snapshot);
-      return;
-    }
-    this._account().areas[areaKey] = snapshot;
-    this._write();
+    this.accountDatabase.setLootSnapshot(this.accountRef, areaKey, snapshot);
   }
 
-  _read() {
-    try {
-      if (!fs.existsSync(this.filePath)) return { schemaVersion: LOOT_DISCOVERY_SCHEMA_VERSION, accounts: {} };
-      const parsed = JSON.parse(fs.readFileSync(this.filePath, 'utf8'));
-      if (parsed?.schemaVersion === LOOT_DISCOVERY_SCHEMA_VERSION && parsed.accounts && typeof parsed.accounts === 'object') return parsed;
-    } catch {
-      // A corrupt optional cache is safely rebuilt from authenticated pages.
-    }
-    return { schemaVersion: LOOT_DISCOVERY_SCHEMA_VERSION, accounts: {} };
-  }
-
-  _write() {
-    const directory = path.dirname(this.filePath);
-    fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-    const temporary = `${this.filePath}.tmp`;
-    fs.writeFileSync(temporary, `${JSON.stringify(this.data, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
-    fs.renameSync(temporary, this.filePath);
-  }
 }
 
 module.exports = {

@@ -1,5 +1,18 @@
-        <div id="subviewHomeEquipment" class="subview-panel home-config-panel" style="display: none;">
-          <div id="combatPvePanel">
+        <div id="subviewHomeEquipment" class="subview-panel combat-workspace" style="display: none;">
+          <div class="subtabs-bar"><button id="btnCombatGeneralTab" class="subtab-btn active" type="button">General</button><button id="btnCombatCrystalsTab" class="subtab-btn" type="button">Power Crystals</button></div>
+          <div id="combatPvePanel" class="home-config-panel combat-workspace-panel">
+          <div class="progression-profile-manager" aria-label="Combat profile manager">
+            <label for="selectCombatProfile">Combat config</label>
+            <select id="selectCombatProfile" class="tree-select"><option value="default">Default</option></select>
+            <input id="inputCombatProfileName" class="tree-input-flex" type="text" maxlength="60"
+              placeholder="Profile name" aria-label="Combat profile name">
+            <button id="btnCreateCombatProfile" class="btn btn-primary btn-sm workspace-icon-btn" type="button"
+              title="Create a new profile" aria-label="Create a new Combat profile"><i data-lucide="plus"></i></button>
+            <button id="btnRenameCombatProfile" class="btn btn-secondary btn-sm workspace-icon-btn" type="button"
+              title="Rename the selected profile" aria-label="Rename the selected Combat profile"><i data-lucide="pencil"></i></button>
+            <button id="btnDeleteCombatProfile" class="btn btn-danger btn-sm workspace-icon-btn" type="button"
+              title="Delete the selected profile" aria-label="Delete the selected Combat profile"><i data-lucide="trash-2"></i></button>
+          </div>
           <div class="combat-summary-shell" aria-live="polite">
             <button id="btnRefreshAttackStrategy"
               class="btn btn-primary btn-sm workspace-icon-btn combat-summary-refresh" type="button"
@@ -62,7 +75,7 @@
               <div class="form-tree-control"><input id="chkAdaptiveFailSafe" type="checkbox" class="tree-checkbox">
               </div>
             </div>
-            <div class="form-tree-row resource-child-row" id="rowAdaptiveFailSafePercent">
+            <div class="form-tree-row resource-grandchild-row" id="rowAdaptiveFailSafePercent">
               <label class="form-tree-label" for="inputAdaptiveFailSafePercent">Target progress reached</label>
               <div class="form-tree-control input-unit-group"><input id="inputAdaptiveFailSafePercent" type="number"
                   min="0" max="100" class="tree-input-sm"><span class="unit-label">%</span></div>
@@ -94,6 +107,20 @@
               <div class="form-tree-control"><input id="chkAdaptiveNukeAbilities" type="checkbox" class="tree-checkbox">
               </div>
             </div>
+            <div class="form-tree-row" title="Use the selected normal hit while the server reports Artemis has marked you. Class abilities are skipped during the mark.">
+              <label class="form-tree-label" for="chkAvoidArtemisCurse">Avoid Artemis curse</label>
+              <div class="form-tree-control"><input id="chkAvoidArtemisCurse" type="checkbox" class="tree-checkbox"></div>
+            </div>
+            <div class="form-tree-row resource-child-row" id="rowArtemisCurseHit">
+              <label class="form-tree-label" for="selectArtemisCurseHit">Marked hit</label>
+              <div class="form-tree-control"><select id="selectArtemisCurseHit" class="tree-select">
+                <option value="1">x1</option><option value="10">x10</option><option value="50">x50</option><option value="100">x100</option><option value="200">x200</option><option value="1000">x1000</option>
+              </select></div>
+            </div>
+            <div class="form-tree-row">
+              <label class="form-tree-label" for="chkEnableCrystalRouting">Move Crystals with Gear set</label>
+              <div class="form-tree-control"><input id="chkEnableCrystalRouting" class="tree-checkbox" type="checkbox"></div>
+            </div>
             <div class="form-tree-row">
               <label class="form-tree-label" for="selectGearPve">Gear set</label>
               <div class="form-tree-control inline-control-with-button"><select id="selectGearPve" class="tree-select">
@@ -122,5 +149,26 @@
             </div>
           </div>
           <div class="page-info-footer"><button id="btnCombatPageInfo" class="btn btn-secondary btn-sm" type="button"><i data-lucide="circle-help"></i> Info</button></div>
+          </div>
+          <div id="combatCrystalsPanel" class="home-config-panel combat-workspace-panel" style="display:none">
+            <div class="crystal-routing-controls" aria-label="Power Crystal Quick Set routing">
+              <label for="selectCrystalSourceSet">Current Crystal layout belongs to</label>
+              <select id="selectCrystalSourceSet" class="tree-select">
+                <option value="default">Current / Default Gear</option>
+                <option value="quick_set_1">Quick Set 1</option><option value="quick_set_2">Quick Set 2</option>
+                <option value="quick_set_3">Quick Set 3</option><option value="quick_set_4">Quick Set 4</option>
+                <option value="quick_set_5">Quick Set 5</option><option value="quick_set_6">Quick Set 6</option>
+                <option value="quick_set_7">Quick Set 7</option><option value="quick_set_8">Quick Set 8</option>
+                <option value="quick_set_9">Quick Set 9</option><option value="quick_set_10">Quick Set 10</option>
+              </select>
+              <div class="crystal-routing-actions">
+                <button id="btnScanCrystalRouting" type="button" class="btn btn-primary btn-sm" title="Learn which Gear slot each currently linked Crystal follows"><i data-lucide="scan-search"></i> Scan layout</button>
+                <button id="btnRefreshCrystals" type="button" class="btn btn-secondary btn-sm workspace-icon-btn" title="Read crystals and their current links" aria-label="Refresh Power Crystals"><i data-lucide="rotate-cw"></i></button>
+              </div>
+            </div>
+            <p class="setting-hint">Choose the Gear set that currently owns this Crystal layout, then scan once. Veybot will move each Crystal to the matching Gear slot whenever combat changes Quick Sets. Shared items stay unchanged.</p>
+            <div id="powerCrystalStatus" class="setting-hint" aria-live="polite">Use Refresh to read this account's crystals.</div>
+            <div id="powerCrystalInventory" class="table-container"><div class="empty-state">Use Refresh to read this account's crystals.</div></div>
+            <p class="setting-hint">A read-only scan can run while the bot is active. If a completely full item hides its equipment ID, Veybot will ask you to pause before temporarily removing and restoring one Crystal to identify it. During automatic routing, combat waits until every required move is verified.</p>
           </div>
         </div>

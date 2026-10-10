@@ -43,6 +43,7 @@ function nonNegative(value) {
 function emptyAccount() {
   return {
     config: null,
+    usageCounters: { deaths: 0, healthPotionsUsed: 0, staminaPotionsUsed: {small:0,large:0,full:0,adventure:0}, manaPotionsUsed:{small:0,large:0} },
     monsterKnowledge: { types: {}, facts: {} },
     autoFarmTypes: {},
     activities: { target: [], loot: [] },
@@ -360,6 +361,21 @@ class AccountDatabase {
       if (account.monsterKnowledge.facts[key]) return clone(account.monsterKnowledge.facts[key]);
     }
     return null;
+  }
+
+  getUsageCounters(accountRef) {
+    const source=this._account(accountRef,false)?.usageCounters || {};
+    const counters={deaths:Math.trunc(nonNegative(source.deaths)),healthPotionsUsed:Math.trunc(nonNegative(source.healthPotionsUsed)),staminaPotionsUsed:{},manaPotionsUsed:{}};
+    for(const type of ['small','large','full','adventure'])counters.staminaPotionsUsed[type]=Math.trunc(nonNegative(source.staminaPotionsUsed?.[type]));
+    for(const type of ['small','large'])counters.manaPotionsUsed[type]=Math.trunc(nonNegative(source.manaPotionsUsed?.[type]));
+    return counters;
+  }
+
+  setUsageCounters(accountRef,source) {
+    const account=this._account(accountRef);const previous=JSON.stringify(account.usageCounters);
+    account.usageCounters=clone(source);account.usageCounters=this.getUsageCounters(accountRef);
+    if(JSON.stringify(account.usageCounters)!==previous){this._persist();this.flush();}
+    return clone(account.usageCounters);
   }
 
   getAccountConfig(accountName) {
@@ -883,6 +899,8 @@ class AccountDatabase {
       monsterId: String(entry.monsterId || '').slice(0, 40),
       instanceId: entry.instanceId == null ? null : String(entry.instanceId).slice(0, 40),
       boss: entry.boss === true,
+      phase: Number(entry.phase) > 0 ? Number(entry.phase) : null,
+      module: String(entry.module || "").slice(0,40),
       damage: finiteOrNull(entry.damage),
       totalDamage: finiteOrNull(entry.totalDamage),
       staminaSpent: finiteOrNull(entry.staminaSpent),
@@ -997,6 +1015,10 @@ class AccountDatabase {
     account.config = source.config && typeof source.config === 'object' && !Array.isArray(source.config)
       ? source.config
       : null;
+    const count=v=>Math.trunc(nonNegative(v));
+    account.usageCounters={deaths:count(source.usageCounters?.deaths),healthPotionsUsed:count(source.usageCounters?.healthPotionsUsed),staminaPotionsUsed:{},manaPotionsUsed:{}};
+    for(const type of ['small','large','full','adventure'])account.usageCounters.staminaPotionsUsed[type]=count(source.usageCounters?.staminaPotionsUsed?.[type]);
+    for(const type of ['small','large'])account.usageCounters.manaPotionsUsed[type]=count(source.usageCounters?.manaPotionsUsed?.[type]);
     const knowledge = source.monsterKnowledge && typeof source.monsterKnowledge === 'object'
       ? source.monsterKnowledge
       : {};

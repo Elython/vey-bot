@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { getDataPath } = require('../dataDirectory');
 const { MONSTER_AREAS, configureMonsterAreas, listMonsterAreas, getMonsterArea, supportsAutoFarm, monsterTypeKey } = require('./monsterCatalog');
 const { CUBE_PVP_NODES } = require('./cubeCatalog');
+const { normalizeChapterSettings } = require('./chapterSettings');
 
 const DEFAULT_CONFIG = Object.freeze({
   general: {
@@ -14,18 +15,28 @@ const DEFAULT_CONFIG = Object.freeze({
     gateMap: 'grakthar_1',
     eventMap: null,
   },
+  customRuns: { activeId: null, runs: {} },
   areaCatalog: { custom: [], hidden: [] },
   gates: {
     targetGate: 3,
     targetWave: 'latest',
     targetPriority: 'joined_first',
   },
+  combatProfiles: {
+    activeId: 'default',
+    profiles: {},
+  },
+  powerCrystals: {
+    enabled: false,
+    sourceSelection: 'default',
+    captured: false,
+    slotRoutes: {},
+    knownLinks: {},
+  },
   combat: {
-    preferredSkill: 'slash',
     allowAbilities: false,
     allowedAbilityIds: [],
     abilityPolicies: {},
-    attackDelayMs: { min: 600, max: 1200 },
     attackStrategy: {
       mode: 'fixed',
       fixedMultiplier: 1,
@@ -33,12 +44,15 @@ const DEFAULT_CONFIG = Object.freeze({
       overshootPercent: 10,
       failSafeEnabled: false,
       failSafePercent: 80,
+      avoidArtemisCurse: false,
+      artemisCurseMultiplier: 1,
       requireTargetStamina: false,
       nukeEnabled: false,
       nukeAttack: 'auto',
       nukeAllowAbilities: false,
     },
   },
+  soloPvp: { mode: 'server_ai', tokenReserve: 0, maxMatches: 0, lossLimit: 0, verifyEffects: false, allowSlashFallback: true, skills: {} },
   cubePvp: {
     enabled: false,
     mode: 'server_ai',
@@ -146,6 +160,7 @@ const DEFAULT_CONFIG = Object.freeze({
     farmWhenStaminaBelow: 100,
     reactionType: 'random',
     maxPerSession: 500,
+    chapterSettings: null,
   },
   scheduler: {
     minDelay: 600,
@@ -208,6 +223,110 @@ function normalizedProgressionProfileName(value, fallback = 'Progression profile
   return normalized || fallback;
 }
 
+function normalizedCombatProfileName(value, fallback = 'Combat profile') {
+  const normalized = String(value || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+  return normalized || fallback;
+}
+
+function combatProfileCombat(candidate = {}) {
+  const combat = deepMerge(DEFAULT_CONFIG.combat, candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+    ? candidate : {});
+  // These retired settings were never consumed by combat runtime. Accept old
+  // imports, but do not persist them into every account-owned profile.
+  delete combat.preferredSkill;
+  delete combat.attackDelayMs;
+  if (['configured', 'adaptive'].includes(combat.abilityUsage)) combat.allowAbilities = true;
+  combat.allowAbilities = combat.allowAbilities === true;
+  delete combat.abilityUsage;
+  combat.allowedAbilityIds = [...new Set(
+    (Array.isArray(combat.allowedAbilityIds) ? combat.allowedAbilityIds : [])
+      .map(value => Math.trunc(Number(value)))
+      .filter(value => Number.isInteger(value) && value > 0)
+  )].slice(0, 100);
+  const abilityPolicies = combat.abilityPolicies && typeof combat.abilityPolicies === 'object'
+    && !Array.isArray(combat.abilityPolicies) ? combat.abilityPolicies : {};
+  combat.abilityPolicies = {};
+  for (const [rawId, policy] of Object.entries(abilityPolicies).slice(0, 100)) {
+    if (!/^\d{1,12}$/.test(rawId) || !policy || typeof policy !== 'object' || Array.isArray(policy)) continue;
+    const role = ['select', 'attack', 'buff', 'debuff', 'passive'].includes(policy.role) ? policy.role : 'select';
+    combat.abilityPolicies[rawId] = {
+      role,
+      maxUses: Math.trunc(clampNumber(policy.maxUses, 0, 0, 1000000)),
+      initialWaitTurns: Math.trunc(clampNumber(policy.initialWaitTurns, 0, 0, 1000)),
+      reapplyTurns: Math.trunc(clampNumber(policy.reapplyTurns, role === 'buff' ? 1 : 3, 1, 1000)),
+      minimumNextAttackStamina: Math.trunc(clampNumber(policy.minimumNextAttackStamina, 0, 0, 1000000)),
+    };
+  }
+  delete combat.staminaReserve;
+  if (!combat.attackStrategy || typeof combat.attackStrategy !== 'object' || Array.isArray(combat.attackStrategy)) {
+    combat.attackStrategy = clone(DEFAULT_CONFIG.combat.attackStrategy);
+  }
+  const multipliers = new Set([1, 10, 50, 100, 200, 1000]);
+  if (!['fixed', 'adaptive'].includes(combat.attackStrategy.mode)) combat.attackStrategy.mode = DEFAULT_CONFIG.combat.attackStrategy.mode;
+  const fixedMultiplier = Number(combat.attackStrategy.fixedMultiplier);
+  combat.attackStrategy.fixedMultiplier = multipliers.has(fixedMultiplier) ? fixedMultiplier : DEFAULT_CONFIG.combat.attackStrategy.fixedMultiplier;
+  const maxMultiplier = Number(combat.attackStrategy.maxMultiplier);
+  combat.attackStrategy.maxMultiplier = multipliers.has(maxMultiplier) ? maxMultiplier : DEFAULT_CONFIG.combat.attackStrategy.maxMultiplier;
+  combat.attackStrategy.overshootPercent = Math.trunc(clampNumber(combat.attackStrategy.overshootPercent, DEFAULT_CONFIG.combat.attackStrategy.overshootPercent, 0, 500));
+  combat.attackStrategy.failSafeEnabled = combat.attackStrategy.failSafeEnabled === true;
+  combat.attackStrategy.failSafePercent = Math.trunc(clampNumber(combat.attackStrategy.failSafePercent, DEFAULT_CONFIG.combat.attackStrategy.failSafePercent, 0, 100));
+  combat.attackStrategy.requireTargetStamina = combat.attackStrategy.requireTargetStamina === true;
+  combat.attackStrategy.nukeEnabled = combat.attackStrategy.nukeEnabled === true;
+  combat.attackStrategy.avoidArtemisCurse = combat.attackStrategy.avoidArtemisCurse === true;
+  combat.attackStrategy.artemisCurseMultiplier = multipliers.has(Number(combat.attackStrategy.artemisCurseMultiplier))
+    ? Number(combat.attackStrategy.artemisCurseMultiplier) : 1;
+  const nukeAttack = String(combat.attackStrategy.nukeAttack || 'auto');
+  combat.attackStrategy.nukeAttack = nukeAttack === 'auto' || /^normal:(?:1|10|50|100|200|1000)$/.test(nukeAttack)
+    || /^ability:\d{1,12}$/.test(nukeAttack) ? nukeAttack : DEFAULT_CONFIG.combat.attackStrategy.nukeAttack;
+  combat.attackStrategy.nukeAllowAbilities = combat.attackStrategy.nukeAllowAbilities === true;
+  return combat;
+}
+
+function combatProfileLoadout(candidate = {}) {
+  const allowed = new Set(['default', ...Array.from({ length: 10 }, (_, index) => `quick_set_${index + 1}`)]);
+  return {
+    gear: allowed.has(candidate.gear) ? candidate.gear : 'default',
+    pets: allowed.has(candidate.pets) ? candidate.pets : 'default',
+  };
+}
+
+function normalizeCrystalSourceSelection(value) {
+  const selection = String(value || 'default');
+  return selection === 'default' || /^quick_set_(?:[1-9]|10)$/.test(selection) ? selection : 'default';
+}
+
+function normalizePowerCrystals(candidate = {}) {
+  const source = candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : {};
+  const knownLinks = {};
+  for (const [crystalId, equipmentRef] of Object.entries(source.knownLinks || {}).slice(0, 500)) {
+    if (/^\d{1,30}$/.test(crystalId) && /^\d{1,30}$/.test(String(equipmentRef))) {
+      knownLinks[crystalId] = String(equipmentRef);
+    }
+  }
+  const slotRoutes = {};
+  for (const [crystalId, rawSlot] of Object.entries(source.slotRoutes || {}).slice(0, 300)) {
+    const slot = String(rawSlot || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (/^\d{1,30}$/.test(crystalId) && /^[a-z][a-z0-9 -]{0,39}$/.test(slot)) slotRoutes[crystalId] = slot;
+  }
+  return {
+    enabled: source.enabled === true,
+    sourceSelection: normalizeCrystalSourceSelection(source.sourceSelection),
+    captured: source.captured === true && Object.keys(slotRoutes).length > 0,
+    slotRoutes,
+    knownLinks,
+    pendingMutation: normalizeCrystalMutation(source.pendingMutation),
+  };
+}
+
+function normalizeCrystalMutation(value) {
+  if (!value || !['POWER_CRYSTAL_EQUIP', 'POWER_CRYSTAL_UNEQUIP'].includes(value.action)
+    || !/^\d{1,30}$/.test(String(value.crystalId || ''))) return null;
+  if (value.action === 'POWER_CRYSTAL_EQUIP' && !/^\d{1,30}$/.test(String(value.equipmentRef || ''))) return null;
+  return { action: value.action, crystalId: String(value.crystalId),
+    equipmentRef: value.action === 'POWER_CRYSTAL_EQUIP' ? String(value.equipmentRef) : null,
+    anchors: (Array.isArray(value.anchors) ? value.anchors : []).map(String).filter(id => /^\d{1,30}$/.test(id)).slice(0, 20) };
+}
+
 function validateConfig(input = {}) {
   const inputHealth = input?.resources?.health;
   const inputMana = input?.resources?.mana;
@@ -247,7 +366,7 @@ function validateConfig(input = {}) {
   const staminaPotionSelections = new Set(['none', 'auto', 'small', 'large', 'full', 'adventure']);
 
   const generalModules = new Set([
-    'gates', 'dungeons', 'event', 'boss_hunt', 'auto_farm', 'pvp', 'battle_pass', 'adventure_quests', 'idle',
+    'custom_runs', 'gates', 'dungeons', 'event', 'boss_hunt', 'auto_farm', 'battle_pass', 'adventure_quests', 'idle',
   ]);
   if (!config.general || typeof config.general !== 'object' || Array.isArray(config.general)) {
     config.general = clone(DEFAULT_CONFIG.general);
@@ -306,38 +425,33 @@ function validateConfig(input = {}) {
     config.gates.targetPriority = DEFAULT_CONFIG.gates.targetPriority;
   }
 
-  if (!['slash', 'power_slash', 'max_damage'].includes(config.combat.preferredSkill)) {
-    config.combat.preferredSkill = DEFAULT_CONFIG.combat.preferredSkill;
-  }
-  // Migrate the short-lived selector to the explicit class-ability permission.
-  if (['configured', 'adaptive'].includes(config.combat.abilityUsage)) {
-    config.combat.allowAbilities = true;
-  }
-  config.combat.allowAbilities = config.combat.allowAbilities === true;
-  delete config.combat.abilityUsage;
-  config.combat.allowedAbilityIds = [...new Set(
-    (Array.isArray(config.combat.allowedAbilityIds) ? config.combat.allowedAbilityIds : [])
-      .map(value => Math.trunc(Number(value)))
-      .filter(value => Number.isInteger(value) && value > 0)
-  )].slice(0, 100);
-  const abilityPolicies = config.combat.abilityPolicies && typeof config.combat.abilityPolicies === 'object'
-    && !Array.isArray(config.combat.abilityPolicies) ? config.combat.abilityPolicies : {};
-  config.combat.abilityPolicies = {};
-  for (const [rawId, policy] of Object.entries(abilityPolicies).slice(0, 100)) {
-    if (!/^\d{1,12}$/.test(rawId) || !policy || typeof policy !== 'object' || Array.isArray(policy)) continue;
-    const role = ['select', 'attack', 'buff', 'debuff', 'passive'].includes(policy.role) ? policy.role : 'select';
-    config.combat.abilityPolicies[rawId] = {
-      role,
-      maxUses: Math.trunc(clampNumber(policy.maxUses, 0, 0, 1000000)),
-      initialWaitTurns: Math.trunc(clampNumber(policy.initialWaitTurns, 0, 0, 1000)),
-      reapplyTurns: Math.trunc(clampNumber(policy.reapplyTurns, role === 'buff' ? 1 : 3, 1, 1000)),
-      minimumNextAttackStamina: Math.trunc(clampNumber(policy.minimumNextAttackStamina, 0, 0, 1000000)),
+  config.combat = combatProfileCombat(config.combat);
+
+  const solo = config.soloPvp && typeof config.soloPvp === 'object' && !Array.isArray(config.soloPvp) ? config.soloPvp : {};
+  config.soloPvp = {
+    mode: solo.mode === 'rotation' ? 'rotation' : 'server_ai',
+    tokenReserve: Math.trunc(clampNumber(solo.tokenReserve, 0, 0, 29)),
+    maxMatches: Math.trunc(clampNumber(solo.maxMatches, 0, 0, 10000)),
+    lossLimit: Math.trunc(clampNumber(solo.lossLimit, 0, 0, 10000)),
+    verifyEffects: solo.verifyEffects === true,
+    allowSlashFallback: solo.allowSlashFallback !== false,
+    skills: {},
+  };
+  for (const [id, row] of Object.entries(solo.skills || {}).slice(0, 100)) {
+    if (!/^-?\d{1,8}$/.test(id) || !row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const role = ['attack', 'buff', 'debuff', 'passive'].includes(row.role) ? row.role : 'select';
+    config.soloPvp.skills[id] = {
+      role, enabled: row.enabled === true && role !== 'select' && role !== 'passive',
+      priority: Math.trunc(clampNumber(row.priority, 0, 0, 10000)),
+      multiplier: clampNumber(row.multiplier, 0, 0, 1000),
+      flatDamage: Math.trunc(clampNumber(row.flatDamage, 0, 0, Number.MAX_SAFE_INTEGER)),
+      effectKey: typeof row.effectKey === 'string' ? row.effectKey.trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80) : '',
+      strength: clampNumber(row.strength, 0, -100, 1000),
+      duration: Math.trunc(clampNumber(row.duration, 0, 0, 100)),
+      waitTurns: Math.trunc(clampNumber(row.waitTurns, 0, 0, 1000)),
+      maxUses: Math.trunc(clampNumber(row.maxUses, 0, 0, 10000)),
     };
   }
-  // Legacy absolute Stamina reserves were never exposed in the UI and could
-  // silently override the visible percentage policy. Discard them on load;
-  // runtime planning derives its reserve from resources.stamina.keepMin.
-  delete config.combat.staminaReserve;
 
   if (!config.cubePvp || typeof config.cubePvp !== 'object' || Array.isArray(config.cubePvp)) {
     config.cubePvp = clone(DEFAULT_CONFIG.cubePvp);
@@ -460,49 +574,7 @@ function validateConfig(input = {}) {
     safeCheck: config.battlePass.safeCheck === true,
     targets: battlePassTargets,
   };
-  config.combat.attackDelayMs.min = Math.trunc(clampNumber(config.combat.attackDelayMs.min, 600, 500, 60000));
-  config.combat.attackDelayMs.max = Math.trunc(clampNumber(
-    config.combat.attackDelayMs.max,
-    1200,
-    config.combat.attackDelayMs.min,
-    120000
-  ));
-  if (!config.combat.attackStrategy || typeof config.combat.attackStrategy !== 'object' || Array.isArray(config.combat.attackStrategy)) {
-    config.combat.attackStrategy = clone(DEFAULT_CONFIG.combat.attackStrategy);
-  }
-  const attackMultipliers = new Set([1, 10, 50, 100, 200, 1000]);
-  if (!['fixed', 'adaptive'].includes(config.combat.attackStrategy.mode)) {
-    config.combat.attackStrategy.mode = DEFAULT_CONFIG.combat.attackStrategy.mode;
-  }
-  const fixedMultiplier = Number(config.combat.attackStrategy.fixedMultiplier);
-  config.combat.attackStrategy.fixedMultiplier = attackMultipliers.has(fixedMultiplier)
-    ? fixedMultiplier
-    : DEFAULT_CONFIG.combat.attackStrategy.fixedMultiplier;
-  const maxMultiplier = Number(config.combat.attackStrategy.maxMultiplier);
-  config.combat.attackStrategy.maxMultiplier = attackMultipliers.has(maxMultiplier)
-    ? maxMultiplier
-    : DEFAULT_CONFIG.combat.attackStrategy.maxMultiplier;
-  config.combat.attackStrategy.overshootPercent = Math.trunc(clampNumber(
-    config.combat.attackStrategy.overshootPercent,
-    DEFAULT_CONFIG.combat.attackStrategy.overshootPercent,
-    0,
-    500
-  ));
-  config.combat.attackStrategy.failSafeEnabled = config.combat.attackStrategy.failSafeEnabled === true;
-  config.combat.attackStrategy.failSafePercent = Math.trunc(clampNumber(
-    config.combat.attackStrategy.failSafePercent,
-    DEFAULT_CONFIG.combat.attackStrategy.failSafePercent,
-    0,
-    100
-  ));
-  config.combat.attackStrategy.requireTargetStamina = config.combat.attackStrategy.requireTargetStamina === true;
-  config.combat.attackStrategy.nukeEnabled = config.combat.attackStrategy.nukeEnabled === true;
-  const nukeAttack = String(config.combat.attackStrategy.nukeAttack || 'auto');
-  config.combat.attackStrategy.nukeAttack = nukeAttack === 'auto' || /^normal:(?:1|10|50|100|200|1000)$/.test(nukeAttack)
-    || /^ability:\d{1,12}$/.test(nukeAttack)
-    ? nukeAttack
-    : DEFAULT_CONFIG.combat.attackStrategy.nukeAttack;
-  config.combat.attackStrategy.nukeAllowAbilities = config.combat.attackStrategy.nukeAllowAbilities === true;
+
 
   if (!config.autoFarm || typeof config.autoFarm !== 'object' || Array.isArray(config.autoFarm)) {
     config.autoFarm = clone(DEFAULT_CONFIG.autoFarm);
@@ -563,12 +635,8 @@ function validateConfig(input = {}) {
       || !entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
     policiesByMonsterId.set(monsterId, entry);
   }
-  const mapMonsterIds = new Set(Object.values(config.autoFarm.maps).flatMap(entries => (
-    Object.values(entries || {}).map(entry => String(entry?.monsterId || '')).filter(value => /^\d{1,30}$/.test(value))
-  )));
   config.autoFarm.targetPolicies = {};
   for (const [monsterId, entry] of [...policiesByMonsterId].slice(0, 500)) {
-    if (mapMonsterIds.has(monsterId)) continue;
     config.autoFarm.targetPolicies[monsterId] = {
       monsterName: typeof entry.monsterName === 'string' ? entry.monsterName.trim().slice(0, 100) : '',
       areaKey: (() => {
@@ -708,6 +776,40 @@ function validateConfig(input = {}) {
       }
     }
   }
+
+  const hasExplicitCombatProfiles = input?.combatProfiles
+    && typeof input.combatProfiles === 'object'
+    && !Array.isArray(input.combatProfiles)
+    && input.combatProfiles.profiles
+    && typeof input.combatProfiles.profiles === 'object'
+    && !Array.isArray(input.combatProfiles.profiles);
+  const fallbackCombatProfile = {
+    id: 'default',
+    name: 'Default',
+    combat: combatProfileCombat(config.combat),
+    loadout: combatProfileLoadout({ gear: config.equipment.gear.pve, pets: config.equipment.pets.pve }),
+  };
+  const requestedCombatProfiles = hasExplicitCombatProfiles ? input.combatProfiles.profiles : {};
+  const combatProfiles = {};
+  for (const [profileId, rawProfile] of Object.entries(requestedCombatProfiles).slice(0, 50)) {
+    if (!/^(?:default|combat_profile_[a-z0-9-]{1,64})$/.test(profileId)
+      || !rawProfile || typeof rawProfile !== 'object' || Array.isArray(rawProfile)) continue;
+    combatProfiles[profileId] = {
+      id: profileId,
+      name: profileId === 'default' ? 'Default' : normalizedCombatProfileName(rawProfile.name),
+      combat: combatProfileCombat(rawProfile.combat),
+      loadout: combatProfileLoadout(rawProfile.loadout),
+    };
+  }
+  if (!combatProfiles.default) combatProfiles.default = fallbackCombatProfile;
+  const requestedCombatActiveId = String(input.combatProfiles?.activeId || 'default');
+  const activeCombatId = Object.hasOwn(combatProfiles, requestedCombatActiveId) ? requestedCombatActiveId : 'default';
+  config.combatProfiles = { activeId: activeCombatId, profiles: combatProfiles };
+  config.powerCrystals = normalizePowerCrystals(config.powerCrystals);
+  const activeCombatProfile = combatProfiles[activeCombatId];
+  config.combat = clone(activeCombatProfile.combat);
+  config.equipment.gear.pve = activeCombatProfile.loadout.gear;
+  config.equipment.pets.pve = activeCombatProfile.loadout.pets;
 
   const validatedMonsterMaps = {};
   const inputMonsterMaps = config.monsters && typeof config.monsters === 'object' &&
@@ -927,6 +1029,8 @@ function validateConfig(input = {}) {
   delete mana.maxSpendGold;
   delete mana.spentGold;
 
+  config.energyFarming.chapterSettings = config.energyFarming.chapterSettings
+    ? normalizeChapterSettings(config.energyFarming.chapterSettings) : null;
   config.energyFarming.enabled = config.energyFarming.enabled === true;
   config.energyFarming.farmWhenStaminaBelow = Math.trunc(clampNumber(
     config.energyFarming.farmWhenStaminaBelow,
@@ -1008,6 +1112,12 @@ function validateConfig(input = {}) {
   config.safety.dryRun = config.safety.dryRun !== false;
   config.safety.maxConsecutiveErrors = Math.trunc(clampNumber(config.safety.maxConsecutiveErrors, 5, 1, 100));
 
+  config.customRuns = require('./customRunCoordinator').normalizeCustomRuns(
+    config.customRuns,
+    visibleAreas,
+    config.progressionProfiles.profiles,
+    config.combatProfiles.profiles,
+  );
   return config;
 }
 
@@ -1070,6 +1180,18 @@ class ConfigManager {
 
   update(patch) {
     const next = deepMerge(this.config, patch);
+    const activeCombatId = this.config.combatProfiles?.activeId || 'default';
+    const activeCombatProfile = next.combatProfiles?.profiles?.[activeCombatId];
+    if (activeCombatProfile && patch?.combat && typeof patch.combat === 'object' && !Array.isArray(patch.combat)) {
+      activeCombatProfile.combat = deepMerge(activeCombatProfile.combat || {}, patch.combat);
+    }
+    const equipmentPatch = patch?.equipment;
+    if (activeCombatProfile && equipmentPatch && typeof equipmentPatch === 'object' && !Array.isArray(equipmentPatch)) {
+      const loadoutPatch = {};
+      if (Object.hasOwn(equipmentPatch.gear || {}, 'pve')) loadoutPatch.gear = equipmentPatch.gear.pve;
+      if (Object.hasOwn(equipmentPatch.pets || {}, 'pve')) loadoutPatch.pets = equipmentPatch.pets.pve;
+      activeCombatProfile.loadout = deepMerge(activeCombatProfile.loadout || {}, loadoutPatch);
+    }
     const activeId = this.config.progressionProfiles?.activeId || 'default';
     const activeProfile = next.progressionProfiles?.profiles?.[activeId];
     if (activeProfile && patch?.progression && typeof patch.progression === 'object' && !Array.isArray(patch.progression)) {
@@ -1083,6 +1205,108 @@ class ConfigManager {
       }
       activeProfile.stamina = deepMerge(activeProfile.stamina || {}, profilePatch);
     }
+    this.config = validateConfig(next);
+    this.save();
+    return this.getConfig();
+  }
+
+  createCombatProfile(name) {
+    const profiles = this.config.combatProfiles?.profiles || {};
+    if (Object.keys(profiles).length >= 50) throw new Error('A maximum of 50 Combat profiles is supported');
+    const id = `combat_profile_${crypto.randomUUID()}`;
+    const next = clone(this.config);
+    next.combatProfiles.profiles[id] = {
+      id,
+      name: normalizedCombatProfileName(name),
+      combat: combatProfileCombat(DEFAULT_CONFIG.combat),
+      loadout: combatProfileLoadout(),
+    };
+    next.combatProfiles.activeId = id;
+    this.config = validateConfig(next);
+    this.save();
+    return this.getConfig();
+  }
+
+  renameCombatProfile(profileId, name) {
+    if (profileId === 'default') throw new Error('The Default Combat profile cannot be renamed');
+    const next = clone(this.config);
+    const profile = next.combatProfiles?.profiles?.[profileId];
+    if (!profile) throw new Error('Combat profile was not found');
+    profile.name = normalizedCombatProfileName(name);
+    this.config = validateConfig(next);
+    this.save();
+    return this.getConfig();
+  }
+
+  deleteCombatProfile(profileId) {
+    if (profileId === 'default') throw new Error('The Default Combat profile cannot be deleted');
+    const next = clone(this.config);
+    if (!next.combatProfiles?.profiles?.[profileId]) throw new Error('Combat profile was not found');
+    delete next.combatProfiles.profiles[profileId];
+    if (next.combatProfiles.activeId === profileId) next.combatProfiles.activeId = 'default';
+    this.config = validateConfig(next);
+    this.save();
+    return this.getConfig();
+  }
+
+  selectCombatProfile(profileId) {
+    if (!this.config.combatProfiles?.profiles?.[profileId]) throw new Error('Combat profile was not found');
+    const next = clone(this.config);
+    next.combatProfiles.activeId = profileId;
+    this.config = validateConfig(next);
+    this.save();
+    return this.getConfig();
+  }
+
+  migrateChapterSettings(legacySettings = {}) {
+    if (this.config.energyFarming.chapterSettings) return this.getConfig();
+    return this.update({ energyFarming: {
+      chapterSettings: normalizeChapterSettings(legacySettings),
+      ...(legacySettings.module ? { enabled: legacySettings.module === 'automatic' } : {}),
+      ...(legacySettings.reactionType ? { reactionType: legacySettings.reactionType } : {}),
+    } });
+  }
+
+  savePowerCrystalMutation(mutation) {
+    const next = clone(this.config);
+    next.powerCrystals.pendingMutation = mutation;
+    this.config = validateConfig(next);
+    this.save();
+    return this.getConfig();
+  }
+
+  setPowerCrystalRoutingEnabled(enabled) {
+    const next = clone(this.config);
+    next.powerCrystals.enabled = enabled === true;
+    this.config = validateConfig(next);
+    this.save();
+    return this.getConfig();
+  }
+
+  savePowerCrystalRouting(sourceSelection, slotRoutes) {
+    const next = clone(this.config);
+    next.powerCrystals = {
+      ...next.powerCrystals,
+      sourceSelection: normalizeCrystalSourceSelection(sourceSelection),
+      captured: true,
+      slotRoutes: clone(slotRoutes || {}),
+    };
+    this.config = validateConfig(next);
+    if (!this.config.powerCrystals.captured) throw new Error('No Crystal-to-slot routes were captured');
+    this.save();
+    return this.getConfig();
+  }
+
+  rememberPowerCrystalLinks(links = {}) {
+    const next = clone(this.config);
+    let changed = false;
+    for (const [crystalId, equipmentRef] of Object.entries(links)) {
+      if (!/^\d{1,30}$/.test(crystalId) || !/^\d{1,30}$/.test(String(equipmentRef))) continue;
+      if (next.powerCrystals.knownLinks[crystalId] === String(equipmentRef)) continue;
+      next.powerCrystals.knownLinks[crystalId] = String(equipmentRef);
+      changed = true;
+    }
+    if (!changed) return this.getConfig();
     this.config = validateConfig(next);
     this.save();
     return this.getConfig();
@@ -1139,7 +1363,10 @@ class ConfigManager {
   }
 
   replace(config) {
-    this.config = validateConfig(config);
+    // An explicit import replaces Chapter policy; historical Manga preferences cannot restore it later.
+    this.config = validateConfig({ ...config, energyFarming: {
+      ...(config.energyFarming || {}), chapterSettings: normalizeChapterSettings(config.energyFarming?.chapterSettings),
+    } });
     this.save();
     return this.getConfig();
   }

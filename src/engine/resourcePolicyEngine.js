@@ -9,7 +9,7 @@ const STAMINA_POTION_TYPES = new Set(['small', 'large', 'full', 'adventure']);
 const MANA_POTION_TYPES = new Set(['small', 'large']);
 
 function staminaMinimumAmount(config = {}, state = {}) {
-  if (state.progression?.ignoreSoftStaminaRules === true) return 0;
+  if (state.progression?.ignoreSoftStaminaRules === true || state.progression?.drainForChapterFallback === true) return 0;
   const keepMinPercent = Math.min(100, Math.max(
     0,
     Number(config.resources?.stamina?.keepMin) || 0,

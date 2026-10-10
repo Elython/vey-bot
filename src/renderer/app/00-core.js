@@ -18,7 +18,10 @@ let autoFarmConfig = { maps: {}, settings: {} };
 let adventureQuestConfig = { quests: {} };
 let battlePassConfig = { enabled: false, areaKey: 'grakthar_3', lootIfAchievable: false, safeCheck: false, targets: {} };
 let bossHuntConfig = { targets: {} };
+let bossHuntKnownBosses = [];
+let bossHuntSearchQuery = '';
 let progressionProfilesConfig = { activeId: 'default', profiles: {} };
+let combatProfilesConfig = { activeId: 'default', profiles: {} };
 let latestAdventureQuestState = null;
 let latestBattlePassState = null;
 let autoFarmServerTargetDrafts = new Map();
@@ -70,7 +73,7 @@ function refreshLucideIcons(root = document) {
 function setButtonIcon(button, iconName, text = '') {
   if (!button) return;
   button.replaceChildren(createLucideIcon(iconName));
-  if (text) button.append(document.createTextNode(` ${text}`));
+  if (text) button.append(document.createTextNode(' ' + uiText(text)));
   refreshLucideIcons(button);
 }
 
@@ -96,7 +99,7 @@ function setRefreshBusy(button, busy) {
 function withUiTimeout(promise, timeoutMs, label) {
   let timeoutId;
   const timeout = new Promise((resolve, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(`${label} is still running. Try Refresh again in a moment.`)), timeoutMs);
+    timeoutId = setTimeout(() => reject(new Error(uiText("{0} is still running. Try Refresh again in a moment.", label))), timeoutMs);
   });
   return Promise.race([Promise.resolve(promise), timeout]).finally(() => clearTimeout(timeoutId));
 }
@@ -153,8 +156,8 @@ function renderPendingConfigState() {
   const dirty = pendingConfigRevision !== appliedConfigRevision;
   btnHeaderApplyConfig.classList.toggle('has-pending-changes', dirty);
   btnHeaderApplyConfig.title = dirty
-    ? 'Apply saved changes to the bot'
-    : 'Configuration is applied';
+    ? uiText('Apply saved changes to the bot')
+    : uiText('Configuration is applied');
 }
 
 function markConfigDirty() {
@@ -168,7 +171,9 @@ function markConfigApplied(revision = pendingConfigRevision) {
 }
 
 function updateCanonicalConfig(patch) {
+  const account = accountRequestToken();
   const save = window.botAPI.updateConfig(patch).then(result => {
+    if (!isCurrentAccountRequest(account)) return result;
     // Persistence may normalize a value before reporting `changed`, while the
     // active bot still owns its previous snapshot. Any successful user save
     // therefore needs an explicit Apply before runtime can be considered current.
@@ -183,10 +188,10 @@ function renderBotModeState() {
   const runtimeLabel = runtimeDryRun ? 'Dry run' : 'Live actions';
   const savedLabel = savedDryRun ? 'Dry run' : 'Live actions';
   const pending = runtimeDryRun !== savedDryRun;
-  botModeText.textContent = pending ? `${runtimeLabel} · ${savedLabel} pending` : runtimeLabel;
+  botModeText.textContent = pending ? uiText("{0} · {1} pending", runtimeLabel, savedLabel) : runtimeLabel;
   botModeText.title = pending
-    ? `The bot is currently using ${runtimeLabel.toLowerCase()}. Press Apply or Start to use ${savedLabel.toLowerCase()}.`
-    : `The bot is using ${runtimeLabel.toLowerCase()}.`;
+    ? uiText("The bot is currently using {0}. Press Apply or Start to use {1}.", runtimeLabel.toLowerCase(), savedLabel.toLowerCase())
+    : uiText("The bot is using {0}.", runtimeLabel.toLowerCase());
   botModeText.classList.toggle('live-mode', !runtimeDryRun);
 }
 
@@ -202,7 +207,8 @@ function updateAutoFarmEligibility(stats = null) {
       : `Auto Farm requires Level 400 (current Level: ${level}).`;
   if (tabAutoFarmBtn) {
     tabAutoFarmBtn.disabled = !eligible;
-    tabAutoFarmBtn.title = message;
+    tabAutoFarmBtn.title = !known ? uiText('Auto Farm availability is waiting for account Level stats.')
+      : eligible ? uiText('Server Auto Farm is available.') : uiText('Auto Farm requires Level 400 (current Level: {0}).', level);
   }
   const option = selectGeneralModule?.querySelector('option[value="auto_farm"]');
   if (option) option.disabled = !eligible;
@@ -210,6 +216,10 @@ function updateAutoFarmEligibility(stats = null) {
 }
 
 function resetAccountScopedRendererState() {
+  resetPowerCrystalWorkspace();
+  resetObjectiveWorkspace();
+  document.getElementById('bossHuntHistoryContent').replaceChildren();
+  loadCustomRuns({});
   accountRendererGeneration += 1;
   progressionLootSessionGeneration += 1;
   activityHistoryRequestGeneration.target += 1;
@@ -232,7 +242,11 @@ function resetAccountScopedRendererState() {
   adventureQuestConfig = { quests: {} };
   battlePassConfig = { enabled: false, areaKey: 'grakthar_3', lootIfAchievable: false, safeCheck: false, targets: {} };
   bossHuntConfig = { targets: {} };
+  bossHuntKnownBosses = [];
+  bossHuntSearchQuery = '';
+  if (inputBossHuntSearch) inputBossHuntSearch.value = '';
   progressionProfilesConfig = { activeId: 'default', profiles: {} };
+  combatProfilesConfig = { activeId: 'default', profiles: {} };
   latestAdventureQuestState = null;
   latestBattlePassState = null;
   areaCatalogConfig = { custom: [], hidden: [] };
@@ -252,7 +266,7 @@ function resetAccountScopedRendererState() {
   if (chkCubePvpEnabled) chkCubePvpEnabled.checked = false;
   renderCubePvpStatus?.(latestCubePvpStatus);
   if (autoFarmServerState) {
-    autoFarmServerState.textContent = 'Unavailable';
+    autoFarmServerState.textContent = uiText('Unavailable');
     autoFarmServerState.classList.remove('is-running');
   }
   autoFarmProgressGrid?.replaceChildren();
@@ -277,7 +291,7 @@ function isCurrentAccountRequest(token) {
 
 async function hydrateAccountConfiguration() {
   const config = await window.botAPI.getConfig();
-  if (!config) throw new Error('Account configuration could not be loaded');
+  if (!config) throw new Error(uiText('Account configuration could not be loaded'));
   await refreshMonsterCatalog(false);
   loadHomeConfiguration(config);
   loadSchedulerConfiguration(config);

@@ -39,8 +39,8 @@ class TargetDiscoveryService {
       || typeof monsterCatalogService.getLiveMonsters !== 'function') {
       throw new TypeError('TargetDiscoveryService requires MonsterCatalogService');
     }
-    if (!['shared', 'legacy'].includes(mode)) throw new Error(`Unsupported Target discovery mode: ${mode}`);
-    if (mode === 'shared' && (!readCoordinator || typeof readCoordinator.read !== 'function'
+    if (mode !== 'shared') throw new Error(`Unsupported Target discovery mode: ${mode}`);
+    if ((!readCoordinator || typeof readCoordinator.read !== 'function'
       || !areaDirectoryService || typeof areaDirectoryService.readDirectory !== 'function')) {
       throw new TypeError('Shared Target discovery requires ReadCoordinator and AreaDirectoryService');
     }
@@ -120,13 +120,7 @@ class TargetDiscoveryService {
       });
       throwIfAborted(signal);
     }
-    if (this.mode === 'legacy') {
-      return {
-        value: await this._discover(areaKey, signal),
-        meta: null,
-        revision: null,
-      };
-    }
+
     return this.readCoordinator.read({
       accountKey: this.accountKey,
       domain: WorldDomain.MONSTER_INSTANCES,
@@ -159,13 +153,11 @@ class TargetDiscoveryService {
   }
 
   peekArea(areaKey) {
-    if (this.mode !== 'shared') return null;
     const snapshot = this.readCoordinator.peek(this.accountKey, WorldDomain.MONSTER_INSTANCES, areaKey);
     return snapshot ? clone(snapshot) : null;
   }
 
   invalidate(areaKey, reason = 'target discovery invalidated') {
-    if (this.mode !== 'shared') return false;
     return this.readCoordinator.invalidate(this.accountKey, WorldDomain.MONSTER_INSTANCES, areaKey, reason);
   }
 }

@@ -62,12 +62,12 @@ function renderCubePvpTargets(overview) {
   if (cubePvpTargetStatus) {
     const enabledNodes = nodes.filter(node => node.enabled === true).length;
     cubePvpTargetStatus.textContent = !overview?.moduleSelected
-      ? 'Select Module: Dungeons and Dungeon: Cube to run Cube PvP.'
+      ? uiText('Select Module: Dungeons and Dungeon: Cube to run Cube PvP.')
       : cubePvpTargetConfig.enabled !== true
-        ? 'Cube PvP is off. Enable Join Cube PvP, then press Apply or Start.'
+        ? uiText('Cube PvP is off. Enable Join Cube PvP, then press Apply or Start.')
         : enabledNodes === 0
-          ? 'Enable at least one Cube PvP node below.'
-          : `${nodes.reduce((total, node) => total + Number(node.openCount || 0), 0)} open match(es) · ${enabledNodes} enabled node(s)`;
+          ? uiText('Enable at least one Cube PvP node below.')
+          : uiText("{0} open match(es) · {1} enabled node(s)", nodes.reduce((total, node) => total + Number(node.openCount || 0), 0), enabledNodes);
   }
   const fragment = document.createDocumentFragment();
   for (const node of nodes) {
@@ -85,13 +85,13 @@ function renderCubePvpTargets(overview) {
     enabled.type = 'checkbox';
     enabled.className = 'tree-checkbox';
     enabled.checked = node.enabled === true;
-    enabled.title = `Allow Veybot to join OPEN matches in ${node.name}`;
+    enabled.title = uiText("Allow Veybot to join OPEN matches in {0}", node.name);
     enabled.setAttribute('aria-label', enabled.title);
     enabled.addEventListener('click', event => event.stopPropagation());
     enabled.addEventListener('change', () => saveCubePvpTargetPolicy(node.id, { enabled: enabled.checked }));
     const enabledLabel = document.createElement('span');
     enabledLabel.className = 'cube-pvp-node-enable';
-    enabledLabel.textContent = 'Join';
+    enabledLabel.textContent = uiText('Join');
     enabledLabel.title = enabled.title;
     enabledLabel.addEventListener('click', event => event.stopPropagation());
     summary.append(chevron, title, state, enabledLabel, enabled);
@@ -107,7 +107,7 @@ function renderCubePvpTargets(overview) {
       table.className = 'cube-pvp-match-table';
       const header = document.createElement('div');
       header.className = 'cube-pvp-match-row cube-pvp-match-header';
-      for (const label of ['Match', 'Status', 'Players', 'Priority', 'Join']) {
+      for (const label of [uiText('Match'), uiText('Status'), uiText('Players'), uiText('Priority'), uiText('Join')]) {
         const cell = document.createElement('span'); cell.textContent = label; header.append(cell);
       }
       table.append(header);
@@ -119,10 +119,10 @@ function renderCubePvpTargets(overview) {
         const players = document.createElement('span'); players.textContent = `${match.occupiedSlots}/${match.maximumSlots}`;
         const priority = document.createElement('input');
         priority.type = 'number'; priority.min = '0'; priority.step = '1'; priority.className = 'monster-number-input';
-        priority.value = String(match.priority || 0); priority.title = 'Lower numbers join first. Equal priorities use the smallest match number.';
+        priority.value = String(match.priority || 0); priority.title = uiText('Lower numbers join first. Equal priorities use the smallest match number.');
         const allow = document.createElement('input');
         allow.type = 'checkbox'; allow.className = 'tree-checkbox'; allow.checked = match.enabled !== false;
-        allow.title = `Allow joining match #${match.matchNo}`;
+        allow.title = uiText("Allow joining match #{0}", match.matchNo);
         const save = () => saveCubePvpTargetPolicy(node.id, {
           matches: { [String(match.matchNo)]: { enabled: allow.checked, priority: Math.max(0, Math.trunc(Number(priority.value) || 0)) } },
         });
@@ -143,12 +143,12 @@ function renderCubePvpTargets(overview) {
 async function refreshCubePvpTargets(force = false) {
   if (!cubePvpTargetContent || !activeAccount) return;
   const requestToken = accountRequestToken();
-  cubePvpTargetContent.replaceChildren(Object.assign(document.createElement('div'), { className: 'empty-state', textContent: 'Loading Cube PvP matches…' }));
+  cubePvpTargetContent.replaceChildren(Object.assign(document.createElement('div'), { className: 'empty-state', textContent: uiText('Loading Cube PvP matches…') }));
   if (btnRefreshCubePvpTargets) btnRefreshCubePvpTargets.disabled = true;
   try {
     const [result, config] = await Promise.all([window.botAPI.getCubePvpOverview(force === true), window.botAPI.getConfig()]);
     if (!isCurrentAccountRequest(requestToken)) return;
-    if (!result?.success) throw new Error(result?.error || 'Cube PvP matches are unavailable');
+    if (!result?.success) throw new Error(result?.error || uiText('Cube PvP matches are unavailable'));
     cubePvpTargetConfig = config?.cubePvp || {};
     cubePvpTargetOverview = result.overview;
     if (result.overview?.status) renderCubePvpStatus(result.overview.status);
@@ -157,7 +157,7 @@ async function refreshCubePvpTargets(force = false) {
     if (!isCurrentAccountRequest(requestToken)) return;
     cubePvpTargetOverview = null;
     cubePvpTargetContent.replaceChildren(Object.assign(document.createElement('div'), { className: 'empty-state', textContent: error.message }));
-    if (cubePvpTargetStatus) cubePvpTargetStatus.textContent = 'Cube PvP discovery failed.';
+    if (cubePvpTargetStatus) cubePvpTargetStatus.textContent = uiText('Cube PvP discovery failed.');
   } finally {
     if (isCurrentAccountRequest(requestToken) && btnRefreshCubePvpTargets) btnRefreshCubePvpTargets.disabled = false;
   }
@@ -181,9 +181,9 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
     const empty = document.createElement('div');
     empty.className = 'empty-config-panel compact-empty-config';
     const title = document.createElement('strong');
-    title.textContent = `${area.label} is currently unavailable`;
+    title.textContent = uiText("{0} is currently unavailable", area.label);
     const detail = document.createElement('span');
-    detail.textContent = message || 'Monster discovery will retry automatically when this account can access the area.';
+    detail.textContent = message || uiText('Monster discovery will retry automatically when this account can access the area.');
     empty.append(title, detail);
     monsterAreaContent.replaceChildren(empty);
     return;
@@ -192,7 +192,7 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
   if (merged.size === 0) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
-    empty.textContent = message || `No monster types were found for ${area.label}.`;
+    empty.textContent = message || uiText("No monster types were found for {0}.", area.label);
     monsterAreaContent.replaceChildren(empty);
     return;
   }
@@ -202,14 +202,14 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
   const header = document.createElement('div');
   header.className = 'monster-config-row monster-config-header';
   for (const [label, title] of [
-    ['Monster', 'Monster Name'], ['Alive', 'Currently alive / total discovered'], ['Stats', 'Monster stats'], ['Damage', 'Target damage'], ['Kills', 'Total kill count'], ['Per dungeon', 'Dungeon only: maximum completed targets of this type in each dungeon instance; 0 disables this separate limit'], ['∞', 'Unlimited targets'],
-    ['Pri', 'Priority — lower numbers run first'], ['Min HP', 'Minimum HP'],
-    ['Done', 'Completed target count'], ['Gear', 'Gear set'], ['Pet', 'Pet set'],
-    ['Potions', 'Stamina potion selection'], ['Skills', 'Allow all globally enabled abilities for this monster'], ['Target', 'Target enabled'],
+    [uiText('Monster'), uiText('Monster Name')], [uiText('Alive'), uiText('Currently alive / total discovered')], [uiText('Stats'), uiText('Monster stats')], [uiText('Damage'), uiText('Target damage')], [uiText('Kills'), uiText('Total kill count')], [uiText('Per dungeon'), uiText('Dungeon only: maximum completed targets of this type in each dungeon instance; 0 disables this separate limit')], ['∞', uiText('Unlimited targets')],
+    [uiText('Pri'), uiText('Priority — lower numbers run first')], [uiText('Min HP'), uiText('Minimum HP')],
+    [uiText('Done'), uiText('Completed target count')], [uiText('Gear'), uiText('Gear set')], [uiText('Pet'), uiText('Pet set')],
+    [uiText('Potions'), uiText('Stamina potion selection')], [uiText('Skills'), uiText('Allow all globally enabled abilities for this monster')], [uiText('Target'), uiText('Target enabled')],
   ]) {
     const cell = document.createElement('span');
     cell.textContent = label;
-    cell.title = title;
+    cell.title = uiText(title);
     header.appendChild(cell);
   }
   table.appendChild(header);
@@ -229,12 +229,12 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
     if (monster.phase) {
       const badge = document.createElement('span');
       badge.className = 'monster-phase-badge';
-      badge.textContent = `Phase ${monster.phase}`;
+      badge.textContent = uiText("Phase {0}", monster.phase);
       name.appendChild(badge);
     } else if (monster.boss) {
       const badge = document.createElement('span');
       badge.className = 'monster-boss-badge';
-      badge.textContent = 'Boss';
+      badge.textContent = uiText('Boss');
       name.appendChild(badge);
     }
     const availability = document.createElement('span');
@@ -242,13 +242,13 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
     const aliveCount = Math.max(0, Number(monster.aliveCount ?? monster.instances) || 0);
     const totalCount = Math.max(aliveCount, Number(monster.totalCount ?? monster.instances) || 0);
     availability.textContent = `${aliveCount}/${totalCount}`;
-    availability.title = `${aliveCount} currently alive out of ${totalCount} discovered`;
+    availability.title = uiText("{0} currently alive out of {1} discovered", aliveCount, totalCount);
     const statsButton = document.createElement('button');
     statsButton.type = 'button';
     statsButton.className = `monster-stats-help${monster.statsAvailable ? ' has-stats' : ''}`;
     statsButton.append(createLucideIcon('circle-help'));
-    statsButton.title = `View verified stats for ${monster.name}`;
-    statsButton.setAttribute('aria-label', `View ${monster.name} stats`);
+    statsButton.title = uiText("View verified stats for {0}", monster.name);
+    statsButton.setAttribute('aria-label', uiText("View {0} stats", monster.name));
     statsButton.addEventListener('click', () => monsterStatsView?.open(area.key, monster.key, monster.name));
 
     const targetDamage = document.createElement('input');
@@ -257,7 +257,7 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
     targetDamage.step = '1';
     targetDamage.value = stored.targetDamage ?? 0;
     targetDamage.className = 'monster-number-input';
-    targetDamage.setAttribute('aria-label', `${monster.name} target damage`);
+    targetDamage.setAttribute('aria-label', uiText("{0} target damage", monster.name));
 
     const killCount = document.createElement('input');
     killCount.type = 'number';
@@ -265,7 +265,7 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
     killCount.step = '1';
     killCount.value = stored.killCount ?? 0;
     killCount.className = 'monster-number-input';
-    killCount.setAttribute('aria-label', `${monster.name} kill count`);
+    killCount.setAttribute('aria-label', uiText("{0} kill count", monster.name));
 
     let dungeonKillCount;
     if (area.type === 'dungeon') {
@@ -275,20 +275,20 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
       dungeonKillCount.step = '1';
       dungeonKillCount.value = stored.dungeonKillCount ?? 0;
       dungeonKillCount.className = 'monster-number-input';
-      dungeonKillCount.title = 'Maximum targets of this type to complete in each dungeon instance. It resets automatically for a new instance. 0 uses the ordinary Kills limit.';
-      dungeonKillCount.setAttribute('aria-label', `${monster.name} per-dungeon kill count`);
+      dungeonKillCount.title = uiText('Maximum targets of this type to complete in each dungeon instance. It resets automatically for a new instance. 0 uses the ordinary Kills limit.');
+      dungeonKillCount.setAttribute('aria-label', uiText("{0} per-dungeon kill count", monster.name));
     } else {
       dungeonKillCount = document.createElement('span');
       dungeonKillCount.textContent = '—';
-      dungeonKillCount.title = 'Per-dungeon limits apply only to Dungeon areas.';
+      dungeonKillCount.title = uiText('Per-dungeon limits apply only to Dungeon areas.');
     }
 
     const unlimited = document.createElement('input');
     unlimited.type = 'checkbox';
     unlimited.className = 'tree-checkbox monster-unlimited';
     unlimited.checked = stored.unlimited === true;
-    unlimited.title = 'Keep targeting new instances without a kill-count limit.';
-    unlimited.setAttribute('aria-label', `Unlimited targets for ${monster.name}`);
+    unlimited.title = uiText('Keep targeting new instances without a kill-count limit.');
+    unlimited.setAttribute('aria-label', uiText("Unlimited targets for {0}", monster.name));
     const updateTargetLimitState = () => {
       killCount.disabled = unlimited.checked;
       killCount.classList.toggle('module-setting-disabled', unlimited.checked);
@@ -301,8 +301,8 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
     priority.step = '1';
     priority.value = stored.priority ?? 0;
     priority.className = 'monster-number-input';
-    priority.title = 'Lower numbers are targeted first; equal priorities sort by monster name.';
-    priority.setAttribute('aria-label', `${monster.name} target priority`);
+    priority.title = uiText('Lower numbers are targeted first; equal priorities sort by monster name.');
+    priority.setAttribute('aria-label', uiText("{0} target priority", monster.name));
 
     const minimumHp = document.createElement('input');
     minimumHp.type = 'number';
@@ -310,8 +310,8 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
     minimumHp.step = '1';
     minimumHp.value = stored.minimumHp ?? 0;
     minimumHp.className = 'monster-number-input';
-    minimumHp.title = 'Ignore an instance when its current HP is below this value.';
-    minimumHp.setAttribute('aria-label', `${monster.name} minimum current HP`);
+    minimumHp.title = uiText('Ignore an instance when its current HP is below this value.');
+    minimumHp.setAttribute('aria-label', uiText("{0} minimum current HP", monster.name));
 
     const progress = document.createElement('div');
     progress.className = 'monster-progress';
@@ -321,7 +321,7 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
     resetProgress.type = 'button';
     resetProgress.className = 'monster-progress-reset';
     resetProgress.append(createLucideIcon('rotate-ccw'));
-    resetProgress.title = `Reset completed target count for ${monster.name}`;
+    resetProgress.title = uiText("Reset completed target count for {0}", monster.name);
     resetProgress.addEventListener('click', async () => {
       const result = await updateCanonicalConfig({
         monsters: { maps: { [area.key]: { [monster.key]: { completedCount: 0, completedInstanceIds: [] } } } },
@@ -342,14 +342,14 @@ function renderMonsterArea(area, discovered = [], sourceAvailable = true, messag
     allowAbilities.type = 'checkbox';
     allowAbilities.className = 'tree-checkbox monster-abilities';
     allowAbilities.checked = stored.allowAbilities === true;
-    allowAbilities.title = 'Off by default. When enabled, all abilities allowed in Combat may be used against this monster; individual per-monster ability selection is intentionally unavailable.';
-    allowAbilities.setAttribute('aria-label', `Allow abilities against ${monster.name}`);
+    allowAbilities.title = uiText('Off by default. When enabled, all abilities allowed in Combat may be used against this monster; individual per-monster ability selection is intentionally unavailable.');
+    allowAbilities.setAttribute('aria-label', uiText("Allow abilities against {0}", monster.name));
     const enabled = document.createElement('input');
     enabled.type = 'checkbox';
     enabled.className = 'tree-checkbox monster-enabled';
     enabled.checked = stored.enabled === true;
-    enabled.title = 'Include this monster type as an automation target.';
-    enabled.setAttribute('aria-label', `Target ${monster.name}`);
+    enabled.title = uiText('Include this monster type as an automation target.');
+    enabled.setAttribute('aria-label', uiText("Target {0}", monster.name));
 
     const controls = { targetDamage, killCount, dungeonKillCount: area.type === 'dungeon' ? dungeonKillCount : null, unlimited, priority, minimumHp, gearSet, petSet, staminaPotion, allowAbilities, enabled };
     Object.values(controls).filter(Boolean).forEach(control => {
@@ -413,7 +413,7 @@ async function selectMonsterArea(areaKey, force = false) {
     return;
   }
 
-  monsterAreaContent.innerHTML = '<div class="empty-state">Loading monster types…</div>';
+  monsterAreaContent.innerHTML = ("<div class=\"empty-state\">" + uiText("Loading monster types…") + "</div>");
   const result = await window.botAPI.listMonstersForArea(areaKey, force);
   if (!result?.success) {
     renderMonsterArea(area, [], true, result?.error || 'Monster discovery failed.');
@@ -472,10 +472,10 @@ if (btnCollectMonsterStats) {
     if (!activeMonsterAreaKey) return;
     btnCollectMonsterStats.disabled = true;
     const previousText = btnCollectMonsterStats.textContent;
-    btnCollectMonsterStats.textContent = 'Collecting…';
+    btnCollectMonsterStats.textContent = uiText('Collecting…');
     try {
       const result = await window.botAPI.collectMonsterStatsForArea(activeMonsterAreaKey);
-      if (!result?.success) throw new Error(result?.error || 'Monster Stats collection failed');
+      if (!result?.success) throw new Error(result?.error || uiText('Monster Stats collection failed'));
       const details = `${result.collected} read, ${result.conflicts} conflicts, ${result.errors?.length || 0} errors`;
       appendLog(result.errors?.length || result.conflicts ? 'WARN' : 'INFO', `Monster Stats: ${details}`);
       monsterAreaCache.delete(activeMonsterAreaKey);

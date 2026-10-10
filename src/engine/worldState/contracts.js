@@ -31,6 +31,7 @@ const WorldDomain = Object.freeze({
   AUTO_FARM: 'autoFarm',
   CUBE: 'cube',
   LOADOUT: 'loadout',
+  SOLO_PVP: 'soloPvp',
 });
 
 const ReadPriority = Object.freeze({
@@ -238,6 +239,7 @@ function createEmptyWorldSnapshot(accountKey, displayName = '') {
     autoFarm: null,
     cube: {},
     loadout: {},
+    soloPvp: {},
     diagnostics: createReadDiagnostics(),
     observationIndex: {},
   };
@@ -404,6 +406,7 @@ function targetForDomain(snapshot, domain) {
     case WorldDomain.ADVENTURE_QUESTS: return snapshot.objectives.adventureQuests;
     case WorldDomain.CUBE: return snapshot.cube;
     case WorldDomain.LOADOUT: return snapshot.loadout;
+    case WorldDomain.SOLO_PVP: return snapshot.soloPvp;
     default: return null;
   }
 }

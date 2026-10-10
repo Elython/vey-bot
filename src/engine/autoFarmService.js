@@ -1,4 +1,4 @@
-const { monsterTypeKey, getMonsterArea, supportsAutoFarm } = require('./monsterCatalog');
+const { monsterTypeKey, getMonsterArea, listMonsterAreas, supportsAutoFarm } = require('./monsterCatalog');
 const {
   ReadPriority,
   WorldDomain,
@@ -104,9 +104,9 @@ class AutoFarmService {
     this.now = options.now || (() => Date.now());
     this.readCoordinator = options.readCoordinator || null;
     this.mode = options.mode || 'shared';
-    if (!['shared', 'legacy'].includes(this.mode)) throw new Error(`Unsupported Auto Farm mode: ${this.mode}`);
-    if (this.mode === 'shared' && !this.readCoordinator) throw new TypeError('Shared Auto Farm requires ReadCoordinator');
-    this.accountKey = this.mode === 'shared' ? assertAccountKey(options.accountKey) : null;
+    if (this.mode !== 'shared') throw new Error(`Unsupported Auto Farm mode: ${this.mode}`);
+    if (!this.readCoordinator) throw new TypeError('Shared Auto Farm requires ReadCoordinator');
+    this.accountKey = assertAccountKey(options.accountKey);
     this.configProvider = typeof options.configProvider === 'function' ? options.configProvider : null;
     this.levelProvider = typeof options.levelProvider === 'function' ? options.levelProvider : null;
     this.lastConfig = {};
@@ -118,7 +118,11 @@ class AutoFarmService {
   }
 
   _stateAreas(config = {}) {
-    const candidates = [config.areaKey, ...Object.keys(config.maps || {}), 'grakthar_2', 'event_black_crown_ascends'];
+    const candidates = [
+      config.areaKey,
+      ...Object.keys(config.maps || {}),
+      ...listMonsterAreas().filter(supportsAutoFarm).map(area => area.key),
+    ];
     const areas = [];
     const seen = new Set();
     for (const areaKey of candidates) {
@@ -172,25 +176,10 @@ class AutoFarmService {
     });
   }
 
-  _projectState(observation, config = {}) {
-    const projected = clone(observation);
-    const targetPolicies = config.targetPolicies && typeof config.targetPolicies === 'object' ? config.targetPolicies : {};
-    projected.targets = (projected.targets || []).map(target => {
-      const desired = targetPolicies[String(target.monsterId)] || null;
-      if (!desired) return target;
-      return {
-        ...target,
-        monsterName: desired.monsterName || target.monsterName,
-        areaKey: desired.areaKey || target.areaKey,
-        enabled: desired.enabled === true,
-        damageMode: Number(desired.damageMode) === 0 ? 0 : 1,
-        minDamage: Math.max(0, Math.trunc(Number(desired.minDamage) || 0)),
-        maxStack: Math.min(250, Math.max(1, Math.trunc(Number(desired.maxStack) || 1))),
-      };
-    });
-    return projected;
+  _projectState(observation) {
+    // Read APIs and mutation reconciliation expose verified server facts.
+    return clone(observation);
   }
-
   async readState(config = {}, {
     force = false,
     priority = ReadPriority.VISIBLE_UI,
@@ -198,7 +187,6 @@ class AutoFarmService {
     signal = null,
   } = {}) {
     this.lastConfig = clone(config || {});
-    if (this.mode === 'legacy') return this._projectState(await this._readFromServer(config, signal), config);
     try {
       const snapshot = await this.readCoordinator.read({
         accountKey: this.accountKey,
@@ -219,12 +207,10 @@ class AutoFarmService {
   }
 
   invalidate(reason = 'Auto Farm observation invalidated') {
-    if (this.mode !== 'shared') return false;
     return this.readCoordinator.invalidate(this.accountKey, WorldDomain.AUTO_FARM, AUTO_FARM_RESOURCE_KEY, reason);
   }
 
   peekObservation() {
-    if (this.mode !== 'shared') return null;
     return clone(this.readCoordinator.peek(this.accountKey, WorldDomain.AUTO_FARM, AUTO_FARM_RESOURCE_KEY)?.value || null);
   }
 
@@ -261,56 +247,52 @@ class AutoFarmService {
   }
 
   _policyForExisting(config, existing) {
-    const stable = config.targetPolicies?.[String(existing.monsterId)]
-      || config.serverTargets?.[String(existing.targetId)]
-      || null;
-    if (stable) return stable;
-    for (const [areaKey, entries] of Object.entries(config.maps || {})) {
-      for (const [monsterKey, entry] of Object.entries(entries || {})) {
-        if (String(entry?.monsterId || '') !== String(existing.monsterId)) continue;
-        return {
-          monsterName: entry.name || existing.monsterName || monsterKey,
-          areaKey,
-          enabled: entry.enabled === true,
-          damageMode: 1,
-          minDamage: Math.max(0, Math.trunc(Number(entry.targetDamage) || 0)),
-          maxStack: Math.min(250, Math.max(1, Math.trunc(Number(entry.maxStack) || 1))),
-        };
-      }
-    }
-    return null;
+    return config.targetPolicies?.[String(existing.monsterId)] || null;
   }
 
-  async saveExistingConfiguration(config = {}) {
+  _configuredTargets(config, state) {
+    // Add Targets maps are drafts, never a source of startup mutations.
+    return (state.targets || []).map(existing => {
+      const policy = this._policyForExisting(config, existing) || existing;
+      return {
+        ...existing, ...policy,
+        targetId: existing.targetId,
+        monsterId: String(existing.monsterId),
+        enabled: policy.enabled === true,
+        damageMode: Number(policy.damageMode) === 0 ? 0 : 1,
+        minDamage: Math.max(0, Math.trunc(Number(policy.minDamage) || 0)),
+        maxStack: Math.min(250, Math.max(1, Math.trunc(Number(policy.maxStack) || 1))),
+      };
+    });
+  }
+
+  async saveExistingConfiguration(config = {}, options = {}) {
     const state = await this.readState(config, { force: true, priority: ReadPriority.MUTATION_REVALIDATION });
-    const wasEnabled = await this._pauseForMutation(state, config);
-    let restored = false;
-    try {
-      await this._mutateOnce('Auto Farm settings save', () => this.gameAPI.saveAutoFarmSettings(config.settings || {}), config);
-      let updated = 0;
-      for (const existing of state.targets) {
-        const desired = this._policyForExisting(config, existing);
-        if (!desired) continue;
-        const normalized = { ...existing, ...desired, targetId: existing.targetId, monsterId: existing.monsterId };
-        const changed = existing.enabled !== (desired.enabled === true)
-          || Number(existing.damageMode) !== (Number(desired.damageMode) === 0 ? 0 : 1)
-          || Number(existing.minDamage) !== Math.max(0, Math.trunc(Number(desired.minDamage) || 0))
-          || Number(existing.maxStack) !== Math.min(250, Math.max(1, Math.trunc(Number(desired.maxStack) || 1)));
-        if (!changed) continue;
-        await this._mutateOnce(`Auto Farm target ${existing.monsterId} update`,
-          () => this.gameAPI.updateAutoFarmTarget(normalized), config);
-        updated += 1;
-      }
-      await this._restoreAfterMutation(wasEnabled, config);
-      restored = true;
-      const refreshed = await this.readState(config, { force: true, priority: ReadPriority.MUTATION_REVALIDATION });
-      return { success: true, updated, targets: refreshed.targets.length, state: refreshed };
-    } catch (error) {
-      if (wasEnabled && !restored) await this._restoreAfterMutation(true, config).catch(() => null);
-      throw error;
+    const desired = this._configuredTargets(config, state);
+    if (options.requireEnabledTarget === true && !desired.some(target => target.enabled)) {
+      throw new Error('No existing Auto Farm targets are enabled. Add targets explicitly or enable them in General first.');
     }
+    const wasEnabled = await this._pauseForMutation(state, config);
+    await this._mutateOnce('Auto Farm settings save', () => this.gameAPI.saveAutoFarmSettings(config.settings || {}), config);
+    let updated = 0;
+    for (const target of desired) {
+      const existing = state.targets.find(entry => String(entry.targetId) === String(target.targetId));
+      const matches = fresh => fresh.enabled === target.enabled
+        && Number(fresh.damageMode) === target.damageMode
+        && Number(fresh.minDamage) === target.minDamage
+        && Number(fresh.maxStack) === target.maxStack;
+      if (matches(existing)) continue;
+      await this._mutateOnce(`Auto Farm target ${target.monsterId} update`,
+        () => this.gameAPI.updateAutoFarmTarget(target), config,
+        fresh => (fresh.targets || []).some(entry => String(entry.targetId) === String(target.targetId) && matches(entry)));
+      updated += 1;
+    }
+    // Start cannot add or resurrect a target. Add owns add_target exclusively.
+    const shouldEnable = options.enable === true || (options.enable !== false && wasEnabled);
+    await this._restoreAfterMutation(shouldEnable, config);
+    const refreshed = await this.readState(config, { force: true, priority: ReadPriority.MUTATION_REVALIDATION });
+    return { success: true, updated, added: 0, targets: desired.filter(target => target.enabled).length, state: refreshed };
   }
-
   async addAreaTargets(config = {}, areaKey) {
     const area = getMonsterArea(areaKey);
     if (!supportsAutoFarm(area)) throw new Error('This area does not support server Auto Farm');
@@ -359,7 +341,7 @@ class AutoFarmService {
       const persistedIds = new Set((refreshed.targets || []).map(target => String(target.monsterId)));
       const missing = selected.filter(target => !persistedIds.has(String(target.monsterId)));
       if (missing.length > 0) throw new Error(`Server acknowledged Auto Farm Add but did not retain: ${missing.map(target => target.monsterName).join(', ')}`);
-      return { success: true, added: selected.length, state: refreshed, discarded, availableMonsterKeys };
+      return { success: true, added: selected.length, addedTargets: selected.map(target => ({ ...target, areaKey })), state: refreshed, discarded, availableMonsterKeys };
     } catch (error) {
       if (wasEnabled && !restored) await this._restoreAfterMutation(true, scopedConfig).catch(() => null);
       throw error;
@@ -386,82 +368,9 @@ class AutoFarmService {
     }
   }
 
-  _configuredTargets(config, state) {
-    const idByName = new Map((state.monsters || []).map(monster => [monsterTypeKey(monster.name), String(monster.id)]));
-    const desiredByMonsterId = new Map();
-    const stablePolicies = config.targetPolicies || Object.fromEntries(
-      Object.values(config.serverTargets || {}).filter(entry => entry?.monsterId).map(entry => [String(entry.monsterId), entry]),
-    );
-    for (const [monsterId, entry] of Object.entries(stablePolicies)) {
-      if (!/^\d{1,30}$/.test(String(monsterId)) || !entry) continue;
-      desiredByMonsterId.set(String(monsterId), { ...entry, monsterId: String(monsterId),
-        enabled: entry.enabled === true, damageMode: Number(entry.damageMode) === 0 ? 0 : 1,
-        minDamage: Math.max(0, Math.trunc(Number(entry.minDamage) || 0)),
-        maxStack: Math.min(250, Math.max(1, Math.trunc(Number(entry.maxStack) || 1))) });
-    }
-    for (const [areaKey, entries] of Object.entries(config.maps || {})) {
-      const area = getMonsterArea(areaKey);
-      if (!supportsAutoFarm(area)) continue;
-      for (const [key, entry] of Object.entries(entries || {})) {
-        if (this.monsterCatalogService?.getRecord(areaKey, key)?.boss === true) continue;
-        const explicitId = /^\d{1,30}$/.test(String(entry?.monsterId || '')) ? String(entry.monsterId) : null;
-        const monsterId = explicitId || idByName.get(monsterTypeKey(entry?.name || key));
-        if (!monsterId) continue;
-        desiredByMonsterId.set(monsterId, { monsterKey: monsterTypeKey(key || entry.name), monsterName: entry.name,
-          monsterId, areaKey, enabled: entry.enabled === true, damageMode: 1,
-          minDamage: Math.max(0, Math.trunc(Number(entry.targetDamage) || 0)),
-          maxStack: Math.min(250, Math.max(1, Math.trunc(Number(entry.maxStack) || 1))) });
-      }
-    }
-    return [...desiredByMonsterId.values()];
-  }
-
-  async saveConfiguration(config = {}, options = {}) {
-    const state = await this.readState(config, { force: true, priority: ReadPriority.MUTATION_REVALIDATION });
-    const desired = this._configuredTargets(config, state);
-    if (options.requireEnabledTarget === true && !desired.some(target => target.enabled === true)) throw new Error('Auto Farm has no enabled Targets');
-    if (state.enabled === true) await this._pauseForMutation(state, config);
-    await this._mutateOnce('Auto Farm settings save', () => this.gameAPI.saveAutoFarmSettings(config.settings || {}), config);
-
-    const desiredById = new Map(desired.map(target => [String(target.monsterId), target]));
-    const consumedIds = new Set();
-    let updated = 0;
-    let added = 0;
-    let disabled = 0;
-    for (const existing of state.targets) {
-      const target = desiredById.get(String(existing.monsterId));
-      if (target && !consumedIds.has(target.monsterId)) {
-        consumedIds.add(target.monsterId);
-        const changed = existing.enabled !== target.enabled || Number(existing.damageMode) !== target.damageMode
-          || Number(existing.minDamage) !== target.minDamage || Number(existing.maxStack) !== target.maxStack;
-        if (changed) {
-          await this._mutateOnce(`Auto Farm target ${target.monsterId} update`,
-            () => this.gameAPI.updateAutoFarmTarget({ ...target, targetId: existing.targetId }), config);
-          updated++;
-        }
-      } else if (existing.enabled === true) {
-        await this._mutateOnce(`Auto Farm target ${existing.monsterId} disable`,
-          () => this.gameAPI.updateAutoFarmTarget({ ...existing, enabled: false }), config);
-        disabled++;
-      }
-    }
-    for (const target of desired) {
-      if (consumedIds.has(target.monsterId) || target.enabled !== true) continue;
-      await this._mutateOnce(`Auto Farm target ${target.monsterId} add`,
-        () => this.gameAPI.addAutoFarmTarget(target), config,
-        fresh => fresh.targets.some(entry => String(entry.monsterId) === target.monsterId));
-      added++;
-    }
-    const shouldEnable = options.enable === true || (options.enable !== false && state.enabled === true);
-    if (shouldEnable) await this._mutateOnce('Auto Farm start', () => this.gameAPI.toggleAutoFarm(true), config, fresh => fresh.enabled === true);
-    const refreshed = await this.readState(config, { force: true, priority: ReadPriority.MUTATION_REVALIDATION });
-    return { success: true, updated, added, disabled, targets: desired.filter(target => target.enabled).length, state: refreshed };
-  }
-
   async syncAndStart(config = {}) {
-    return this.saveConfiguration(config, { enable: true, requireEnabledTarget: true });
+    return this.saveExistingConfiguration(config, { enable: true, requireEnabledTarget: true });
   }
-
   async pause(config = {}) {
     const effectiveConfig = Object.keys(config || {}).length > 0 ? config : (this.configProvider?.() || this.lastConfig || {});
     const state = await this.readState(effectiveConfig, { force: true, priority: ReadPriority.MUTATION_REVALIDATION });

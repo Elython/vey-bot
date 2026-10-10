@@ -536,7 +536,7 @@ class GameAPI {
       .filter(entry => entry.name.trim().toLowerCase() === wanted);
     const selected = includePrevious
       ? available.filter(entry => entry.active === true
-        || (entry.status === 'ended' && entry.guildLootState === 'pending')
+        || entry.status === 'ended'
         || entry.status === 'failed')
       : available.filter(entry => entry.active).slice(0, 1);
     if (selected.length === 0) {
@@ -702,6 +702,42 @@ class GameAPI {
     return { success: false, message: text.slice(0, 200) || `Quick Set ${normalizedNumber} could not be applied` };
   }
 
+  async getPowerCrystals() {
+    const response = await this.http.get(`${BASE_URL}/power_crystals.php`);
+    if (!response.ok) throw new GameAPIError('Power Crystals page could not be loaded', 'CRYSTALS_FETCH_FAILED');
+    const parsed = require('./powerCrystalsCatalog').parsePowerCrystalsPage(response.text);
+    if (!parsed.recognized) throw new GameAPIError('Power Crystals inventory was not recognized', 'CRYSTALS_PARSE_FAILED');
+    return parsed;
+  }
+
+  async equipPowerCrystal({ crystalId, equipmentRef, intent }) {
+    if (!/^\d{1,30}$/.test(String(crystalId)) || !/^\d{1,30}$/.test(String(equipmentRef))
+      || !/^[a-f0-9]{64}$/i.test(String(intent || ''))) {
+      throw new GameAPIError('Invalid Power Crystal equip request', 'CRYSTAL_REQUEST_INVALID');
+    }
+    const response = await this.http.post(`${BASE_URL}/power_crystals.php`, {
+      crystal_intent: intent,
+      action: 'equip_crystal',
+      crystal_id: crystalId,
+      equipment_inv_id: equipmentRef,
+    }, { retries: 1 });
+    if (!response.ok) throw new GameAPIError(`Power Crystal equip returned HTTP ${response.status}`, 'CRYSTAL_EQUIP_FAILED');
+    return { success: true, submitted: true, status: response.status };
+  }
+
+  async unequipPowerCrystal({ crystalId, intent }) {
+    if (!/^\d{1,30}$/.test(String(crystalId)) || !/^[a-f0-9]{64}$/i.test(String(intent || ''))) {
+      throw new GameAPIError('Invalid Power Crystal unequip request', 'CRYSTAL_REQUEST_INVALID');
+    }
+    const response = await this.http.post(`${BASE_URL}/power_crystals.php`, {
+      crystal_intent: intent,
+      action: 'unequip_crystal',
+      crystal_id: crystalId,
+    }, { retries: 1 });
+    if (!response.ok) throw new GameAPIError(`Power Crystal unequip returned HTTP ${response.status}`, 'CRYSTAL_UNEQUIP_FAILED');
+    return { success: true, submitted: true, status: response.status };
+  }
+
   async getClassSkillTree() {
     const resp = await this.http.get(`${BASE_URL}/class_skill_tree.php`);
     if (!resp.ok) {
@@ -805,7 +841,8 @@ class GameAPI {
       message: data.message || '',
       hp: data.hp || null,             // { value, max, percent }
       stamina: data.stamina ?? null,
-      damage: data.damage ?? null,
+      // The message reports this hit; data.damage may be cumulative for abilities.
+      damage: (()=>{const hit=String(data.message||'').match(/You have dealt\s*(?:<strong>)?([\d,]+)(?:<\/strong>)?\s*damage/i);return hit?Number(hit[1].replace(/,/g,'')):null;})(),
       mana: data.mana ?? null,
       xpDelta: data.xp_delta ?? null,
       totalDmgDealt: data.totaldmgdealt ?? null,

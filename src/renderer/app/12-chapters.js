@@ -4,7 +4,7 @@ function populateManualMangaOptions(list) {
   const previous = selectManualManga.value || workingMangaText?.textContent || '';
   const placeholder = document.createElement('option');
   placeholder.value = '';
-  placeholder.textContent = 'Select manga';
+  placeholder.textContent = uiText('Select manga');
   const options = (list || []).map(manga => {
     const option = document.createElement('option');
     option.value = manga.slug;
@@ -24,7 +24,7 @@ async function loadMangaList() {
     populateManualMangaOptions(list);
     mangaListTable.innerHTML = '';
     if (!list || list.length === 0) {
-      mangaListTable.innerHTML = '<div class="empty-state">No manga configured yet. Add one above.</div>';
+      mangaListTable.innerHTML = ("<div class=\"empty-state\">" + uiText("No manga configured yet. Add one above.") + "</div>");
       return;
     }
 
@@ -38,7 +38,7 @@ async function loadMangaList() {
       title.append(document.createTextNode(`${manga.title || manga.slug} `));
       const chapters = document.createElement('span');
       chapters.className = 'manga-item-chapters';
-      chapters.textContent = `| ${manga.chapters || 0} chapters`;
+      chapters.textContent = uiText("| {0} chapters", manga.chapters || 0);
       title.appendChild(chapters);
       info.appendChild(title);
 
@@ -46,23 +46,23 @@ async function loadMangaList() {
       actions.className = 'manga-item-actions';
       const farmed = document.createElement('span');
       farmed.className = 'farmed-counter-badge';
-      farmed.title = 'Chapters farmed by this account';
-      farmed.textContent = `Farmed: ${manga.farmedCount || 0}`;
+      farmed.title = uiText('Chapters farmed by this account');
+      farmed.textContent = uiText("Farmed: {0}", manga.farmedCount || 0);
       const refresh = document.createElement('button');
       refresh.className = 'btn-refresh-manga';
-      refresh.title = 'Refresh chapter count';
+      refresh.title = uiText('Refresh chapter count');
       refresh.append(createLucideIcon('rotate-cw'));
       refresh.setAttribute('aria-label', refresh.title);
       refresh.addEventListener('click', () => window.refreshSingleManga(manga.slug));
       const farm = document.createElement('button');
       farm.className = 'btn-refresh-manga';
-      farm.title = 'Farm the next chapter';
+      farm.title = uiText('Farm the next chapter');
       farm.append(createLucideIcon('play'));
       farm.setAttribute('aria-label', farm.title);
       farm.addEventListener('click', () => window.farmSpecificManga(manga.slug));
       const remove = document.createElement('button');
       remove.className = 'btn-delete-x';
-      remove.title = 'Remove for this account';
+      remove.title = uiText('Remove for this account');
       remove.append(createLucideIcon('trash-2'));
       remove.setAttribute('aria-label', remove.title);
       remove.addEventListener('click', () => window.deleteMangaTarget(manga.slug));
@@ -76,7 +76,7 @@ async function loadMangaList() {
     mangaListTable.innerHTML = '';
     const errorState = document.createElement('div');
     errorState.className = 'empty-state';
-    errorState.textContent = `Error loading manga: ${err.message}`;
+    errorState.textContent = uiText("Error loading manga: {0}", err.message);
     mangaListTable.appendChild(errorState);
   }
 }
@@ -102,7 +102,7 @@ if (btnAddManga) {
   btnAddManga.addEventListener('click', async () => {
     const input = inputMangaTarget ? inputMangaTarget.value.trim() : '';
     if (!input) {
-      alert('Please enter a manga name or URL.');
+      alert(uiText('Please enter a manga name or URL.'));
       return;
     }
     btnAddManga.disabled = true;
@@ -115,7 +115,7 @@ if (btnAddManga) {
         inputMangaTarget.value = '';
         await loadMangaList();
       } else {
-        alert(res.error || 'Failed to add manga.');
+        alert(res.error || uiText('Failed to add manga.'));
         appendFarmTerminal('error', `Failed to add manga: ${res.error || 'Unknown error'}`);
       }
     } catch (err) {
@@ -135,7 +135,7 @@ if (btnAddManga) {
 }
 
 window.deleteMangaTarget = async function (slug) {
-  if (confirm(`Remove manga "${slug}" for this account?`)) {
+  if (confirm(uiText("Remove manga \"{0}\" for this account?", slug))) {
     await window.botAPI.deleteManga(slug, activeAccount);
     appendFarmTerminal('info', `Removed "${slug}" from account manga list.`);
     await loadMangaList();
@@ -143,7 +143,7 @@ window.deleteMangaTarget = async function (slug) {
 };
 
 window.farmSpecificManga = async function (slug) {
-  if (!confirm(`Farm the next available chapter for "${slug}" now? This sends a reaction request.`)) return;
+  if (!confirm(uiText("Farm the next available chapter for \"{0}\" now? This sends a reaction request.", slug))) return;
   appendFarmTerminal('info', `Posting a verified chapter reaction for ${slug}...`);
   if (workingMangaText) {
     workingMangaText.textContent = slug;
@@ -183,7 +183,7 @@ if (btnStartManualFarm) {
       appendFarmTerminal('warn', `Manual farm not started: ${safety.reason}`);
       return;
     }
-    if (!confirm(`Farm ${chapterCount} chapter${chapterCount === 1 ? '' : 's'} from "${targetManga}"? This sends one reaction request per chapter.`)) return;
+    if (!confirm(uiText("Farm {0} chapter{1} from \"{2}\"? This sends one reaction request per chapter.", chapterCount, chapterCount === 1 ? '' : 's', targetManga))) return;
 
     btnStartManualFarm.disabled = true;
     if (workingMangaText) workingMangaText.textContent = targetManga;
@@ -204,6 +204,10 @@ if (btnStartManualFarm) {
 
 if (window.botAPI.onEnergyProgress) {
   window.botAPI.onEnergyProgress(progress => {
+    if(progress?.type==='recorded'){
+      if(!window.chapterCounterRefreshTimer)window.chapterCounterRefreshTimer=setTimeout(()=>{window.chapterCounterRefreshTimer=null;loadMangaList();},250);
+      return;
+    }
     if (progress?.automatic === true) {
       const type = progress.status === 'success' ? 'success' : 'warn';
       appendFarmTerminal(type, `Automatic fallback · ${progress.slug || 'chapter'} #${progress.chapter || '?'}${progress.staminaGained ? ` · +${progress.staminaGained} ST` : ''}${progress.message ? ` · ${progress.message}` : ''}`);

@@ -30,7 +30,7 @@ function renderCubePvpStatus(status = {}) {
   if (cubePvpMatch) cubePvpMatch.textContent = commitment ? `${commitment.nodeName || `Node ${commitment.nodeId}`} · #${commitment.matchNo}` : '—';
   if (cubePvpSlot) cubePvpSlot.textContent = commitment?.slotIndex ? String(commitment.slotIndex) : '—';
   if (cubePvpCooldown) cubePvpCooldown.textContent = Number(status.cooldownRemainingMs) > 0
-    ? `${Math.ceil(Number(status.cooldownRemainingMs) / 60000)} min` : 'Ready';
+    ? uiText("{0} min", Math.ceil(Number(status.cooldownRemainingMs) / 60000)) : uiText('Ready');
   if (cubePvpWaitReason) cubePvpWaitReason.textContent = status.waitReason || '—';
   if (cubePvpLastState) cubePvpLastState.textContent = status.lastStateAt ? new Date(status.lastStateAt).toLocaleString() : '—';
   if (btnOpenCubePvpMatch) btnOpenCubePvpMatch.disabled = !commitment;

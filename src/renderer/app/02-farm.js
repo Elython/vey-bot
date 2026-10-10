@@ -19,24 +19,6 @@ function updateClocks() {
 updateClocks();
 setInterval(updateClocks, 1000);
 
-// Developer Mode Toggle
-function initDevMode() {
-  const isDev = localStorage.getItem('devMode') === 'true';
-  if (chkDevMode) chkDevMode.checked = isDev;
-  if (tabConsoleBtn) tabConsoleBtn.style.display = isDev ? 'block' : 'none';
-
-  if (chkDevMode) {
-    chkDevMode.addEventListener('change', () => {
-      const checked = chkDevMode.checked;
-      localStorage.setItem('devMode', checked ? 'true' : 'false');
-      if (tabConsoleBtn) tabConsoleBtn.style.display = checked ? 'block' : 'none';
-      if (!checked && currentTab === 'console') {
-        switchTab('home');
-      }
-    });
-  }
-}
-
 // Collapsible Tree Section Toggle (Safety, Mangas, Running)
 window.toggleTreeSection = function (sectionId) {
   const sec = document.getElementById(sectionId);
@@ -81,7 +63,7 @@ function appendFarmTerminal(type, message) {
 if (btnClearFarmTerminal) {
   btnClearFarmTerminal.addEventListener('click', () => {
     if (farmTerminalOutput) {
-      farmTerminalOutput.innerHTML = '<div class="terminal-line text-muted">[Cleared] Farm terminal log reset.</div>';
+      farmTerminalOutput.innerHTML = ("<div class=\"terminal-line text-muted\">" + uiText("[Cleared] Farm terminal log reset.") + "</div>");
     }
   });
 }
@@ -113,14 +95,6 @@ async function loadFarmSettings() {
   }
 }
 
-async function syncFarmModuleToEngine() {
-  const automatic = selectFarmModule?.value === 'automatic';
-  const reactionType = selectReactionType?.value || 'random';
-  return updateCanonicalConfig({
-    energyFarming: { enabled: automatic, reactionType },
-  });
-}
-
 async function saveCurrentFarmSettings() {
   if (!activeAccount) return;
   const settings = {
@@ -135,10 +109,10 @@ async function saveCurrentFarmSettings() {
     lastWorkingManga: workingMangaText ? workingMangaText.textContent : '-',
   };
   try {
-    await Promise.all([
-      window.botAPI.saveFarmSettings(settings, activeAccount),
-      syncFarmModuleToEngine(),
-    ]);
+    const result = await updateCanonicalConfig({ energyFarming: {
+      enabled: settings.module === 'automatic', reactionType: settings.reactionType, chapterSettings: settings,
+    } });
+    if (!result?.success) appendLog('ERROR', result?.error || 'Chapter settings could not be saved');
   } catch (err) {
     console.error('Error saving farm settings:', err);
   }
@@ -164,17 +138,17 @@ if (inputStopHourlyStaminaMin) inputStopHourlyStaminaMin.addEventListener('chang
 if (selectReactionType) selectReactionType.addEventListener('change', saveCurrentFarmSettings);
 
 let GATE_MAPS = [
-  ['grakthar_1', 'Grakthar 1'], ['grakthar_2', 'Grakthar 2'], ['grakthar_3', 'Grakthar 3'],
-  ['olympus_1', 'Olympus 1'], ['olympus_hermes', 'Olympus Hermes'],
-  ['olympus_artemis', 'Olympus Artemis'], ['olympus_poseidon', 'Olympus Poseidon'],
-  ['olympus_ares', 'Olympus Ares'], ['olympus_apollo', 'Olympus Apollo'],
-  ['olympus_athena', 'Olympus Athena'], ['olympus_hera', 'Olympus Hera'],
-  ['olympus_zeus', 'Olympus Zeus'],
+  ['grakthar_1', uiText('Grakthar 1')], ['grakthar_2', uiText('Grakthar 2')], ['grakthar_3', uiText('Grakthar 3')],
+  ['olympus_1', uiText('Olympus 1')], ['olympus_hermes', uiText('Olympus Hermes')],
+  ['olympus_artemis', uiText('Olympus Artemis')], ['olympus_poseidon', uiText('Olympus Poseidon')],
+  ['olympus_ares', uiText('Olympus Ares')], ['olympus_apollo', uiText('Olympus Apollo')],
+  ['olympus_athena', uiText('Olympus Athena')], ['olympus_hera', uiText('Olympus Hera')],
+  ['olympus_zeus', uiText('Olympus Zeus')],
 ];
 let DUNGEON_MAPS = [
-  ['castle_fallen_prince', 'Castle of the Fallen Prince'],
-  ['shadowbridge_warrens', 'Shadowbridge Warrens'],
-  ['polyhedral_crucible', 'The Polyhedral Crucible'],
+  ['castle_fallen_prince', uiText('Castle of the Fallen Prince')],
+  ['shadowbridge_warrens', uiText('Shadowbridge Warrens')],
+  ['polyhedral_crucible', uiText('The Polyhedral Crucible')],
 ];
 // Event areas are populated from the active/custom area catalog. Ended events
 // are deliberately not kept in this visible bootstrap list.

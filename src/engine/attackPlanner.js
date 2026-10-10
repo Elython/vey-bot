@@ -43,6 +43,7 @@ class AttackPlanner {
 
   plan(state = {}) {
     const policy = this.config.combat?.attackStrategy || {};
+    const curseActive = policy.avoidArtemisCurse === true && Number(state.artemisMarkTurns) > 0;
     const mode = policy.mode === 'adaptive' ? 'adaptive' : 'fixed';
     const progression = state.progression || {};
     const reserve = staminaMinimumAmount(this.config, state);
@@ -55,7 +56,7 @@ class AttackPlanner {
 
     const preferredStaminaCost = Math.max(0, Math.trunc(Number(progression.preferredStaminaCost) || 0));
     const progressionAttack = affordable.find(attack => attack.stamCost === preferredStaminaCost);
-    if (progressionAttack) {
+    if (progressionAttack && !curseActive) {
       return copyAttack(progressionAttack, {
         mode,
         source: 'progression-level-alignment',
@@ -65,6 +66,11 @@ class AttackPlanner {
     }
 
     const baseDamage = positiveNumber(state.damageEstimate?.conservativeBaseDamage);
+    if (curseActive) {
+      const curseLimit = Math.min(normalizeMultiplier(policy.artemisCurseMultiplier, 1), configuredLimit);
+      const permitted = affordable.filter(attack => attack.multiplier <= curseLimit).at(-1);
+      return copyAttack(permitted, { mode, source: 'artemis-curse', estimatedDamage: baseDamage && permitted ? Math.floor(baseDamage * permitted.multiplier) : null });
+    }
     const remainingDamage = Number(state.remainingTargetDamage);
     const selectedFixed = affordable.at(-1) || affordable[0];
     if (!baseDamage || !Number.isFinite(remainingDamage) || remainingDamage <= 0) {

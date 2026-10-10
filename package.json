@@ -1,7 +1,7 @@
 {
   "name": "veyra-bot-client",
   "productName": "Veybot",
-  "version": "2.5.5",
+  "version": "2.5.6",
   "description": "Compact API-driven Electron automation client with dry-run safety and human-assisted challenges",
   "main": "src/main/index.js",
   "scripts": {
@@ -25,8 +25,8 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "electron": "^44.5.1",
-    "electron-builder": "^26.15.3"
+    "electron": "^44.7.0",
+    "electron-builder": "^26.17.0"
   },
   "dependencies": {
     "lucide": "^1.48.0"

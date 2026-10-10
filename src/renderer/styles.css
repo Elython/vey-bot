@@ -182,6 +182,8 @@ body {
 }
 
 .gear-dropdown {
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
   display: none;
   position: absolute;
   right: 0;
@@ -197,6 +199,15 @@ body {
 
 .gear-dropdown.show {
   display: block;
+}
+
+.menu-section-title {
+  padding: 6px 12px 3px;
+  color: #888888;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
 }
 
 .menu-item {
@@ -230,6 +241,12 @@ body {
   border-top: 1px solid #333333;
   margin: 4px 0;
 }
+
+.menu-language-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; color: #bbb; font-size: 11px; }
+.menu-language-row .tree-select { width: 105px; min-width: 0; }
+html[lang="de"] .tab-btn, html[lang="fr"] .tab-btn { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
+html[lang="de"] .app-container.is-authenticated .tabs, html[lang="fr"] .app-container.is-authenticated .tabs { overflow-y: auto; }
+html[lang="de"] .form-tree-label, html[lang="fr"] .form-tree-label { overflow-wrap: anywhere; max-width: 50%; white-space: normal; }
 
 /* Main Content */
 .main-content {
@@ -1432,6 +1449,61 @@ input[type="number"]::-webkit-outer-spin-button {
   overflow-y: auto;
 }
 
+.combat-workspace {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.combat-workspace > .subtabs-bar {
+  flex: 0 0 auto;
+}
+
+.combat-workspace-panel {
+  min-height: 0;
+}
+
+.crystal-routing-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 230px) minmax(150px, 220px) minmax(210px, 1fr);
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 7px;
+  border: 1px solid #303030;
+  border-radius: 3px;
+  background: #1e1e1e;
+  color: #bdbdbd;
+  font-size: 10px;
+}
+
+.crystal-routing-controls .tree-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.crystal-routing-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+#powerCrystalStatus {
+  min-height: 18px;
+  padding: 3px 1px;
+}
+
+#powerCrystalStatus.is-error { color: #ff7777; }
+#powerCrystalStatus.is-success { color: #7bd88f; }
+
+@media (max-width: 900px) {
+  .crystal-routing-controls {
+    grid-template-columns: 1fr;
+  }
+  .crystal-routing-actions {
+    justify-content: flex-start;
+  }
+}
+
 .range-control {
   gap: 5px;
 }
@@ -1632,6 +1704,14 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 
 .objective-subview {
+  flex-direction: column;
+  gap: 7px;
+  min-height: 0;
+}
+
+.objective-panel-body {
+  display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 7px;
   min-height: 0;
@@ -2797,6 +2877,12 @@ input[type="number"]::-webkit-outer-spin-button {
   white-space: nowrap;
 }
 
+.boss-hunt-search {
+  width: min(260px, 32vw);
+  min-width: 150px;
+  height: 28px;
+}
+
 .boss-hunt-row .monster-availability-count.is-active {
   color: #70c996;
 }
@@ -3800,3 +3886,66 @@ input[type="number"]::-webkit-outer-spin-button {
     grid-template-columns: 1fr;
   }
 }
+.tab-btn[data-sidebar-hidden] {
+  display: none !important;
+}
+.solo-pvp-summary { display: flex; padding: 8px; font-size: 11px; }
+#soloPvpCurrentStatus { padding: 8px; font-size: 11px; white-space: pre-line; }
+.solo-pvp-actions { display: flex; gap: 6px; padding: 8px; }
+.solo-pvp-skill { border-bottom: 1px solid #333333; padding: 5px; }
+.solo-pvp-skill summary { display: grid; grid-template-columns: minmax(110px, 1fr) 65px 100px 24px; gap: 8px; align-items: center; cursor: pointer; font-size: 11px; }
+.solo-pvp-skill-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 8px; }
+.solo-pvp-effect-key { width: 100px; }
+.solo-pvp-history-row { display: flex; justify-content: space-between; gap: 8px; padding: 5px; font-size: 11px; }
+
+/* Custom Runs: compact, labeled controls and readable ordered step cards. */
+.custom-runs-view { gap: 12px; }
+.custom-runs-panel { display: flex; flex: 1 1 auto; flex-direction: column; gap: 12px; min-height: 0; }
+.custom-runs-panel > .custom-runs-intro,
+.custom-runs-panel > .custom-run-manager,
+.custom-runs-panel > .custom-run-behavior,
+.custom-runs-panel > .custom-run-workflow,
+.custom-runs-panel > .page-info-footer { flex: 0 0 auto; }
+.custom-runs-intro { margin: 0; color: #aaa; font-size: 12px; line-height: 1.5; }
+.custom-runs-view .panel { margin: 0; padding: 14px; }
+.custom-run-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 12px; color: #bbb; }
+.custom-run-field > span:first-child { font-size: 11px; color: #999; }
+.custom-runs-view .custom-run-field > input, .custom-runs-view .tree-select { box-sizing: border-box; width: 100%; min-width: 0; background: #191919; color: #ddd; border: 1px solid #3c3c3c; border-radius: 4px; padding: 7px 9px; font-family: inherit; font-size: 12px; }
+.custom-runs-view input:focus, .custom-runs-view select:focus { outline: none; border-color: #568cb7; }
+.custom-run-behavior .setting-hint { margin: 8px 0 14px; line-height: 1.5; }
+.custom-run-seconds { display: flex; align-items: center; justify-content: flex-start; gap: 6px; }
+.custom-runs-view .custom-run-seconds input { width: 80px; }
+.custom-run-steps { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.custom-run-step { background: #1b1b1b; border: 1px solid #393939; border-left: 3px solid #568cb7; border-radius: 5px; padding: 12px; }
+.custom-run-step-heading { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; flex-wrap: wrap; }
+.custom-run-step-title { color: #ddd; font-size: 12px; font-weight: 600; }
+.custom-run-step-enabled { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #aaa; }
+.custom-run-step-actions { display: flex; gap: 5px; margin-left: auto; }
+.custom-run-step-fields { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; }
+.custom-run-step-disabled { border-left-color: #666; }
+.custom-run-step-disabled .custom-run-step-fields { opacity: .55; }
+.custom-run-empty { padding: 18px; margin: 0; border: 1px dashed #444; border-radius: 4px; color: #aaa; font-size: 12px; text-align: center; }
+.custom-runs-view .page-info-footer { margin-top: auto; }
+@media (max-width: 700px) { .custom-run-step-fields { grid-template-columns: 1fr; } }
+.overview-custom-run { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; padding: 7px 0; margin-top: 4px; border-top: 1px solid #303030; font-size: 11px; color: #999; }
+.overview-custom-run > svg { width: 13px; height: 13px; color: #6494b9; flex-shrink: 0; }
+.overview-custom-run strong { color: #c1c1c1; font-weight: 500; overflow-wrap: anywhere; }
+.overview-run-step { color: #9fc2dc; background: #23313b; border: 1px solid #3a5060; border-radius: 4px; padding: 2px 6px; white-space: nowrap; }
+.custom-run-behavior { display:grid; grid-template-columns:minmax(150px,1.2fr) minmax(150px,1fr) minmax(150px,1fr); align-items:center; gap:12px; }
+.custom-run-behavior > .panel-header { display:none; }
+.custom-run-behavior > .custom-run-field { max-width:none; }
+.custom-run-behavior > .custom-run-timers { display:contents; }
+.custom-run-behavior > #customRunOrderHint { grid-column:1/-1; order:4; margin:0; }
+@media(max-width:700px){.custom-run-behavior{grid-template-columns:1fr;}}
+
+/* Keep the config actions together and make number steppers follow their input. */
+.custom-run-manager { margin-bottom: 0; grid-template-columns:max-content minmax(100px,1fr) minmax(100px,1fr) repeat(4,26px); gap:5px; overflow-x:auto; }
+.custom-run-manager > label { white-space:nowrap; }
+.custom-run-manager .tree-select, .custom-run-manager .tree-input-flex { height:28px; padding:3px 7px; box-sizing:border-box; }
+.custom-run-manager > button { width:26px; height:28px; min-width:26px; padding:4px; }
+.custom-runs-view .custom-run-behavior { padding:8px 10px; gap:8px 12px; }
+.custom-run-behavior .custom-run-field { gap:4px; }
+.custom-run-behavior .tree-select, .custom-run-behavior input[type="number"] { height:28px; box-sizing:border-box; padding:3px 7px; }
+.custom-run-seconds > .number-stepper { width:80px; flex:0 0 80px; }
+.custom-run-seconds > input, .custom-run-seconds .number-stepper input { width:80px; }
+.custom-run-seconds .number-stepper:focus-within input { padding-right:18px; }

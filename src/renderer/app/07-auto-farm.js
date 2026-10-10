@@ -37,7 +37,7 @@ function stageAutoFarmTarget(areaKey, monsterKey, name, controls) {
 
 async function saveAutoFarmTargets() {
   if (btnSaveAutoFarmTargets) btnSaveAutoFarmTargets.disabled = true;
-  setWorkspaceStatus(autoFarmTargetStatus, 'Adding selected targets…');
+  setWorkspaceStatus(autoFarmTargetStatus, uiText('Adding selected targets…'));
   try {
     for (const rendered of autoFarmRenderedRows.values()) {
       stageAutoFarmTarget(rendered.areaKey, rendered.monsterKey, rendered.name, rendered.controls);
@@ -49,19 +49,21 @@ async function saveAutoFarmTargets() {
     }
     const areaKey = autoFarmTargetAreaSelect?.value || autoFarmConfig.areaKey;
     const enabledCount = Object.values(maps[areaKey] || {}).filter(entry => entry.enabled === true).length;
-    if (enabledCount === 0) throw new Error('Select at least one non-boss monster to add');
+    if (enabledCount === 0) throw new Error(uiText('Select at least one non-boss monster to add'));
     const result = await updateCanonicalConfig({ autoFarm: {
       areaKey,
       maps,
     } });
-    if (!result?.success) throw new Error(result?.error || 'Could not save Auto Farm Targets');
+    if (!result?.success) throw new Error(result?.error || uiText('Could not save Auto Farm Targets'));
     autoFarmConfig = result.config?.autoFarm || autoFarmConfig;
     const serverResult = await window.botAPI.addAutoFarmTargets(areaKey);
-    if (!serverResult?.success) throw new Error(serverResult?.error || 'Server Auto Farm target add failed');
+    if (!serverResult?.success) throw new Error(serverResult?.error || uiText('Server Auto Farm target add failed'));
+    autoFarmConfig = serverResult.config?.autoFarm || autoFarmConfig;
+    for (const rendered of autoFarmRenderedRows.values()) rendered.controls.enabled.checked = false;
     autoFarmTargetDrafts.clear();
     renderAutoFarmServerTargets(serverResult.state);
     appendLog('INFO', `Added or updated ${serverResult.added ?? 0} Auto Farm target(s).`);
-    setWorkspaceStatus(autoFarmTargetStatus, `Added or updated ${serverResult.added ?? 0} target(s).`, 'success');
+    setWorkspaceStatus(autoFarmTargetStatus, uiText("Added or updated {0} target(s).", serverResult.added ?? 0), 'success');
   } catch (error) {
     appendLog('ERROR', `Auto Farm target add failed: ${error.message}`);
     setWorkspaceStatus(autoFarmTargetStatus, error.message, 'error');
@@ -92,7 +94,7 @@ function renderAutoFarmTargets(area, discovered = [], available = [], unavailabl
   if (merged.size === 0) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
-    empty.textContent = unavailableReason || `No verified Auto Farm monster IDs were found for ${area.label}.`;
+    empty.textContent = unavailableReason || uiText("No verified Auto Farm monster IDs were found for {0}.", area.label);
     autoFarmTargetContent?.replaceChildren(empty);
     return 0;
   }
@@ -100,7 +102,7 @@ function renderAutoFarmTargets(area, discovered = [], available = [], unavailabl
   table.className = 'monster-config-table auto-farm-target-table';
   const header = document.createElement('div');
   header.className = 'monster-config-row monster-config-header';
-  for (const label of ['Monster', 'ID', 'Stats', 'Damage', 'Stack', 'Target']) {
+  for (const label of [uiText('Monster'), uiText('ID'), uiText('Stats'), uiText('Damage'), uiText('Stack'), uiText('Target')]) {
     const cell = document.createElement('span'); cell.textContent = label; header.append(cell);
   }
   table.append(header);
@@ -109,7 +111,7 @@ function renderAutoFarmTargets(area, discovered = [], available = [], unavailabl
     const row = document.createElement('div'); row.className = 'monster-config-row';
     const name = document.createElement('span'); name.className = 'monster-config-name'; name.textContent = monster.name;
     const id = document.createElement('span'); id.className = 'activity-history-id'; id.textContent = monster.autoFarmMonsterId;
-    const stats = document.createElement('button'); stats.type = 'button'; stats.className = 'monster-stats-help'; stats.append(createLucideIcon('circle-help')); stats.title = `View verified stats for ${monster.name}`; stats.setAttribute('aria-label', stats.title); stats.addEventListener('click', () => monsterStatsView?.open(area.key, monster.key, monster.name));
+    const stats = document.createElement('button'); stats.type = 'button'; stats.className = 'monster-stats-help'; stats.append(createLucideIcon('circle-help')); stats.title = uiText("View verified stats for {0}", monster.name); stats.setAttribute('aria-label', stats.title); stats.addEventListener('click', () => monsterStatsView?.open(area.key, monster.key, monster.name));
     const targetDamage = document.createElement('input'); targetDamage.type = 'number'; targetDamage.min = '0'; targetDamage.value = stored.targetDamage ?? 0; targetDamage.className = 'tree-input-sm';
     const maxStack = document.createElement('input'); maxStack.type = 'number'; maxStack.min = '1'; maxStack.max = '250'; maxStack.value = stored.maxStack ?? 1; maxStack.className = 'tree-input-sm';
     const enabled = document.createElement('input'); enabled.type = 'checkbox'; enabled.className = 'tree-checkbox'; enabled.checked = stored.enabled === true;
@@ -138,8 +140,8 @@ async function loadAutoFarmTargetWorkspace() {
   const areaKey = populateAutoFarmTargetAreaSelect(preferredArea);
   const area = monsterCatalog.find(entry => entry.key === areaKey);
   if (!area) return;
-  setWorkspaceStatus(autoFarmTargetStatus, `Loading ${area.label}…`);
-  if (autoFarmTargetContent) autoFarmTargetContent.innerHTML = '<div class="empty-state">Loading Auto Farm targets…</div>';
+  setWorkspaceStatus(autoFarmTargetStatus, uiText("Loading {0}…", area.label));
+  if (autoFarmTargetContent) autoFarmTargetContent.innerHTML = ("<div class=\"empty-state\">" + uiText("Loading Auto Farm targets…") + "</div>");
   const result = await window.botAPI.listMonstersForArea(areaKey);
   if (result?.success) monsterAreaCache.set(areaKey, result);
   const available = result?.autoFarmAvailableMonsters || [];
@@ -157,8 +159,8 @@ async function loadAutoFarmTargetWorkspace() {
       : '';
   const success = result?.success && addableCount > 0;
   setWorkspaceStatus(autoFarmTargetStatus, success
-    ? `${addableCount} addable server monster type(s)${sourceLabel ? ` · ${sourceLabel}` : ''}`
-    : (result?.error || catalog.error || `No verified Auto Farm IDs are available for ${area.label}`), success ? 'success' : 'error');
+    ? uiText("{0} addable server monster type(s){1}", addableCount, sourceLabel ? ` · ${sourceLabel}` : '')
+    : (result?.error || catalog.error || uiText("No verified Auto Farm IDs are available for {0}", area.label)), success ? 'success' : 'error');
 }
 
 autoFarmTargetAreaTypeSelect?.addEventListener('change', () => {
@@ -168,4 +170,3 @@ autoFarmTargetAreaTypeSelect?.addEventListener('change', () => {
 autoFarmTargetAreaSelect?.addEventListener('change', loadAutoFarmTargetWorkspace);
 btnRefreshAutoFarmTargets?.addEventListener('click', loadAutoFarmTargetWorkspace);
 btnSaveAutoFarmTargets?.addEventListener('click', saveAutoFarmTargets);
-

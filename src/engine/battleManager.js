@@ -62,6 +62,7 @@ class BattleManager {
     const battle = this._requireBattle();
     if (battle.isDead) return { success: false, message: 'Monster is already dead' };
     const result = await this.controller.attack(battle.battleLocator || battle.battleCfg, skill, delay, signal);
+    if (skill?.supportAbility === true && /couldn['’]t pierce the monster['’]s divine shield\.\s*No stamina spent\./i.test(result.message || '')) return result;
     this.applyAttackResult(result, { supportAbility: skill?.supportAbility === true });
     return result;
   }

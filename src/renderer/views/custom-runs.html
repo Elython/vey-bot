@@ -1,0 +1,28 @@
+<section id="viewCustomRuns" class="view-panel objective-view custom-runs-view" style="display:none">
+  <div class="panel-header">Custom Runs</div>
+  <div class="home-config-panel custom-runs-panel">
+  <p class="custom-runs-intro">Choose what the bot does next when the current activity has nothing left to do.</p>
+  <div class="progression-profile-manager custom-run-manager" aria-label="Custom Run config manager">
+    <label for="selectCustomRun">Custom Runs Config:</label><select id="selectCustomRun" class="tree-select"></select>
+    <input id="inputRunName" class="tree-input-flex" maxlength="80" placeholder="Run name" aria-label="Run name">
+    <button id="btnCreateRun" class="btn btn-primary btn-sm workspace-icon-btn" type="button" title="Create an empty run" aria-label="Create a run"><i data-lucide="plus"></i></button>
+    <button id="btnRenameRun" class="btn btn-secondary btn-sm workspace-icon-btn" type="button" title="Rename the selected run" aria-label="Rename run"><i data-lucide="pencil"></i></button>
+    <button id="btnDuplicateRun" class="btn btn-secondary btn-sm workspace-icon-btn" type="button" title="Duplicate the selected run" aria-label="Duplicate run"><i data-lucide="copy"></i></button>
+    <button id="btnDeleteRun" class="btn btn-danger btn-sm workspace-icon-btn" type="button" title="Delete the selected run" aria-label="Delete run"><i data-lucide="trash-2"></i></button>
+  </div>
+  <div class="panel custom-run-behavior">
+    <div class="panel-header">How this run moves between steps</div>
+    <label class="custom-run-field"><span>Step order</span><select id="selectRunMode" class="tree-select"><option value="sequential">Run in order</option><option value="priority">Prioritize earlier steps</option></select></label>
+    <p id="customRunOrderHint" class="setting-hint"></p>
+    <div class="custom-run-timers">
+      <label class="custom-run-field" title="Productive work restarts this timer. Errors and ongoing battles do not count as finished."><span>Wait before leaving an idle step</span><div class="custom-run-seconds"><input id="inputRunIdle" type="number" min="5" max="3600" class="tree-input-sm" aria-label="Idle step wait in seconds"><span>seconds</span></div></label>
+      <label class="custom-run-field" title="If every step has nothing to do, wait this long before checking again."><span>Wait when the whole run is idle</span><div class="custom-run-seconds"><input id="inputRunRound" type="number" min="10" max="3600" class="tree-input-sm" aria-label="Full run wait in seconds"><span>seconds</span></div></label>
+    </div>
+  </div>
+  <div class="panel custom-run-workflow">
+    <div class="panel-header-row"><div><div class="panel-header">Run steps</div><div class="setting-hint">Each step uses the targets configured in that module's own tab.</div></div><button id="btnAddRunStep" class="btn btn-primary btn-sm" type="button"><i data-lucide="plus"></i> Add step</button></div>
+    <div id="customRunSteps" class="custom-run-steps"></div>
+  </div>
+  <div class="page-info-footer"><button id="btnCustomRunsPageInfo" class="btn btn-secondary btn-sm" type="button"><i data-lucide="circle-help"></i> Info</button></div>
+  </div>
+</section>

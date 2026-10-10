@@ -1,17 +1,18 @@
       <section id="viewBattlePass" class="view-panel objective-view" style="display: none;">
-        <div class="panel-header-row">
-          <div>
-            <div class="panel-header">Battle Pass</div>
-            <div id="battlePassStatus" class="panel-subtitle">Daily objectives are read from the authenticated Battle Pass page.</div>
-          </div>
-          <button id="btnRefreshBattlePass" class="btn btn-primary btn-sm workspace-icon-btn" type="button"
-            title="Refresh Battle Pass" aria-label="Refresh Battle Pass"><i data-lucide="rotate-cw"></i></button>
-        </div>
-        <div class="subtabs-bar">
+        <div class="subtabs-bar workspace-subtabs">
           <button class="subtab-btn active" id="subtabBattlePassGeneralBtn" type="button">General</button>
           <button class="subtab-btn" id="subtabBattlePassTargetsBtn" type="button">BP targets</button>
         </div>
         <div id="subviewBattlePassGeneral" class="subview-panel objective-subview">
+          <div class="panel-header-row">
+            <div>
+              <div class="panel-header">Battle Pass</div>
+              <div id="battlePassStatus" class="panel-subtitle">Daily objectives are read from the authenticated Battle Pass page.</div>
+            </div>
+            <button id="btnRefreshBattlePass" class="btn btn-primary btn-sm workspace-icon-btn" type="button"
+              title="Refresh Battle Pass" aria-label="Refresh Battle Pass"><i data-lucide="rotate-cw"></i></button>
+          </div>
+          <div class="home-config-panel objective-panel-body">
           <div id="battlePassCounters" class="objective-counter-grid"></div>
           <div class="tree-form-container objective-policy-box">
             <div class="form-tree-row"><label class="form-tree-label" for="chkBattlePassEnabled">Run daily objectives</label>
@@ -24,10 +25,20 @@
               <div class="form-tree-control"><input id="chkBattlePassSafeCheck" type="checkbox" class="tree-checkbox"
                 title="After looting, confirm the Battle Pass counter advanced. Stop using that monster for this run if it did not count."></div></div>
           </div>
+          </div>
         </div>
         <div id="subviewBattlePassTargets" class="subview-panel objective-subview" style="display:none;">
-          <div class="panel-subtitle">Only monsters from the selected Grakthar 2 or Grakthar 3 Target Gate are used.</div>
+          <div class="panel-header-row">
+            <div>
+              <div class="panel-header">Battle Pass targets</div>
+              <div class="panel-subtitle">Configure monsters from the selected Target Gate.</div>
+            </div>
+            <button id="btnRefreshBattlePassTargets" class="btn btn-primary btn-sm workspace-icon-btn" type="button"
+              title="Refresh Battle Pass targets" aria-label="Refresh Battle Pass targets"><i data-lucide="rotate-cw"></i></button>
+          </div>
+          <div class="home-config-panel objective-panel-body">
           <div id="battlePassTargetsContent" class="objective-target-table"></div>
           <div class="objective-actions"><span>Lower priority numbers run first.</span></div>
+          </div>
         </div>
       </section>

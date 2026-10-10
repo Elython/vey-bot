@@ -275,10 +275,16 @@ class MangaManager {
     if (!accountName || !Number.isFinite(Number(cycleId))) return false;
     const allAccountData = this.getAccountData();
     const account = allAccountData[accountName] || { hiddenSlugs: [], farmSettings: {} };
-    if (Number(account.farmCycleId) === Number(cycleId)) return false;
+    const previous = account.farmCycleId;
+    if (previous !== undefined && previous !== null && Number(cycleId) <= Number(previous)) return false;
     account.farmCycleId = Number(cycleId);
-    account.farmedChapters = {};
-    account.farmedChapterNumbers = {};
+    // Adopt missing legacy markers without erasing durable reactions.
+    if (previous === undefined || previous === null) {
+      allAccountData[accountName] = account;
+      this.saveAccountData(allAccountData);
+      return false;
+    }
+    // Chapter identities are durable: a new reward cycle does not authorize replay.
     allAccountData[accountName] = account;
     this.saveAccountData(allAccountData);
     this.logEntry(`Account [${accountName}] started Chapter reward cycle ${cycleId}`);

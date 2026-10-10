@@ -55,50 +55,52 @@ function loadProgressionAreaSelection(container, selectedAreas) {
 function updateProgressionSourceCount(container, output) {
   if (!output) return;
   const selected = selectedProgressionAreas(container).length;
-  output.textContent = `${selected} selected`;
+  output.textContent = uiText("{0} selected", selected);
 }
 const MODULE_DESCRIPTIONS = {
+  custom_runs: {title:uiText('Custom Run'),body:uiText('Runs enabled steps from the selected saved Custom Run. Each step uses its own Module, Area and Progression config. Continuous idle advances after its delay; errors, hard safety and active PvP do not count as finished. Edit runs in Custom Runs and press the header Save.')},
   idle: {
-    title: 'Idle module',
-    body: 'Does not start automated combat or chapter actions. Account authentication, resource statistics, and background synchronization remain available.',
+    title: uiText('Idle module'),
+    body: uiText('Does not start automated combat or chapter actions. Account authentication, resource statistics, and background synchronization remain available.'),
   },
   gates: {
-    title: 'Gates module',
-    body: 'Scans the selected Gate and considers only enabled Targets. Lower priority numbers run first, Minimum HP filters instances, configured quick sets are applied before combat, and target-authorized Stamina potions obey the global permission and per-type limits.',
+    title: uiText('Gates module'),
+    body: uiText('Scans the selected Gate and considers only enabled Targets. Lower priority numbers run first, Minimum HP filters instances, configured quick sets are applied before combat, and target-authorized Stamina potions obey the global permission and per-type limits.'),
   },
   dungeons: {
-    title: 'Dungeons module',
-    body: 'Finds the selected Dungeon through its verified server routes and considers only enabled live Targets. Shadowbridge and Castle follow the locations emitted by the Guild Dungeons index; Cube follows its verified PvE locations 11–14. It never invents room numbers.',
+    title: uiText('Dungeons module'),
+    body: uiText('Finds the selected Dungeon through its verified server routes and considers only enabled live Targets. Shadowbridge and Castle follow the locations emitted by the Guild Dungeons index; Cube follows its verified PvE locations 11–14. It never invents room numbers.'),
   },
   event: {
-    title: 'Event module',
-    body: 'Runs The Black Crown Ascends from its fixed Event wave. It uses the same Target, Combat, Health, pacing, and normal battle rules as Gates.',
+    title: uiText('Event module'),
+    body: uiText('Runs The Black Crown Ascends from its fixed Event wave. It uses the same Target, Combat, Health, pacing, and normal battle rules as Gates.'),
   },
   boss_hunt: {
-    title: 'Boss Hunt module',
-    body: 'Considers enabled Boss Hunt rows across every accessible Gate and Event. Its settings and completion counters are independent from Targets, Battle Pass, and Adventurer Quests.',
+    title: uiText('Boss Hunt module'),
+    body: uiText('Considers enabled Boss Hunt rows across every accessible Gate and Event. Its settings and completion counters are independent from Targets, Battle Pass, and Adventurer Quests.'),
   },
+  pvp: { title: uiText('Solo PvP module'), body: uiText('Uses Solo season entry tokens to find or resume a match. Server Auto Play is the default. Configured rotations use your separate PvP skill policies; ordinary Stamina, healing, Mana, and Progression rules do not apply. Paid token refills and reward claims remain manual.') },
   auto_farm: {
-    title: 'Auto Farm module',
-    body: 'Synchronizes the selected Gate or Event targets with the game server Auto Farm and then enables it. Normal Combat, Health, Mana, Stamina, Looting, and Progression decisions are suspended until this module is stopped or changed.',
+    title: uiText('Auto Farm module'),
+    body: uiText('Synchronizes the selected Gate or Event targets with the game server Auto Farm and then enables it. Normal Combat, Health, Mana, Stamina, Looting, and Progression decisions are suspended until this module is stopped or changed.'),
   },
   battle_pass: {
-    title: 'Battle Pass module',
-    body: 'Reads the two daily Battle Pass counters, spends Stamina through normal combat, and attacks the configured Lizard target until the loot counter completes. Server Auto Farm is never counted and reward claiming remains manual.',
+    title: uiText('Battle Pass module'),
+    body: uiText('Reads the two daily Battle Pass counters, spends Stamina through normal combat, and attacks the configured Lizard target until the loot counter completes. Server Auto Farm is never counted and reward claiming remains manual.'),
   },
   adventure_quests: {
-    title: 'Adv Quests module',
-    body: 'Reads the current Adventurer Guild quest, follows the saved quest classification and target policy, claims qualifying loot when required, and turns in a verified completed quest. Lower priority numbers are accepted first.',
+    title: uiText('Adv Quests module'),
+    body: uiText('Reads the current Adventurer Guild quest, follows the saved quest classification and target policy, claims qualifying loot when required, and turns in a verified completed quest. Lower priority numbers are accepted first.'),
   },
 };
 const ATTACK_MODULE_DESCRIPTIONS = {
   fixed: {
-    title: 'Fixed attack module',
-    body: 'Uses the selected multiplier as the normal-hit fallback. An explicitly allowed class ability may replace it when its learned x1-based estimate fits the remaining target and its Mana/Stamina policy passes. Normal multiplier limits do not authorize class abilities.',
+    title: uiText('Fixed attack module'),
+    body: uiText('Uses the selected multiplier as the normal-hit fallback. An explicitly allowed class ability may replace it when its learned x1-based estimate fits the remaining target and its Mana/Stamina policy passes. Normal multiplier limits do not authorize class abilities.'),
   },
   adaptive: {
-    title: 'Adaptive attack module',
-    body: 'Learns x1 damage for the current player stats, monster, Gear, and Pets, then compares permitted attacks under the target and resource rules. Nuke enemy works in Gates, Events, or Dungeons: it can use a selected finishing hit, or Auto can choose the smallest permitted hit that reaches the remaining contribution when shared monster HP is too low. If none can reach it, that transient monster is skipped. Exact server-reported total damage still decides completion.',
+    title: uiText('Adaptive attack module'),
+    body: uiText('Learns x1 damage for the current player stats, monster, Gear, and Pets, then compares permitted attacks under the target and resource rules. Nuke enemy works in Gates, Events, or Dungeons: it can use a selected finishing hit, or Auto can choose the smallest permitted hit that reaches the remaining contribution when shared monster HP is too low. If none can reach it, that transient monster is skipped. Exact server-reported total damage still decides completion.'),
   },
 };
 
@@ -138,20 +140,20 @@ function showInfoDialog(description) {
 
 const PAGE_HELP = Object.freeze({
   setup: {
-    title: 'Bot Setup guide',
-    body: 'Module chooses the activity Veybot runs. Gate, Dungeon, or Event chooses where that module works. Progression config selects the resource and leveling policy.\n\nStamina controls when ordinary combat may continue. Health controls healing, death limits, and optional potion buying. Mana controls when class abilities may restore Mana. A Max Deaths value of 0 means unlimited.',
+    title: uiText('Bot Setup guide'),
+    body: uiText('Module chooses the activity Veybot runs. Gate, Dungeon, or Event chooses where that module works. Progression config selects the resource and leveling policy. Combat config selects the attack, ability, and PvE loadout policy.\n\nStamina controls when ordinary combat may continue. Health controls healing, death limits, and optional potion buying. Mana controls when class abilities may restore Mana. A Max Deaths value of 0 means unlimited. Death and potion-use counters persist across restarts and module changes until you reset them. Pause or stop the bot before resetting a counter.'),
   },
   combat: {
-    title: 'Combat guide',
-    body: 'Fixed always requests the selected normal hit when it is affordable. Adaptive learns damage from server results and chooses a permitted hit for the remaining target.\n\nAllowed target overshoot is how far an Adaptive estimate may exceed the remaining target damage. Force x1 near target overrides that choice after Target progress reached is met. For example, 80% means all later normal hits are x1.\n\nClass abilities remain unused until you classify each one as Attack, Buff, Debuff, or Passive and explicitly allow it.',
+    title: uiText('Combat guide'),
+    body: uiText('Fixed always requests the selected normal hit when it is affordable. Adaptive learns damage from server results and chooses a permitted hit for the remaining target.\n\nAllowed target overshoot is how far an Adaptive estimate may exceed the remaining target damage. Force x1 near target overrides that choice after Target progress reached is met. For example, 80% means all later normal hits are x1.\n\nClass abilities remain unused until you classify each one as Attack, Buff, Debuff, or Passive and explicitly allow it.'),
   },
   progression: {
-    title: 'Progression guide',
-    body: 'Progression decides whether to bank loot for a level, farm Chapters, use an allowed Stamina potion, or wait. Loot is claimed only when verified eligible rewards can produce a level. Veybot always drains usable Stamina before claiming that level-up loot.\n\nSource lists decide which Dungeons, Events, and Gates may contribute loot. Chapter fallback and potion limits are separate fallback permissions.',
+    title: uiText('Progression guide'),
+    body: uiText('Progression decides whether to bank loot for a level, farm Chapters, use an allowed Stamina potion, or wait. Loot is claimed only when verified eligible rewards can produce a level. Veybot always drains usable Stamina before claiming that level-up loot.\n\nSource lists decide which Dungeons, Events, and Gates may contribute loot. Chapter fallback and potion limits are separate fallback permissions.'),
   },
   chapters: {
-    title: 'Chapter farming guide',
-    body: 'Manual posts the requested number of chapter reactions immediately. Automatic only permits Progression to use Chapters as a fallback; Allow Chapter fallback must also be enabled in Progression.\n\nAdd a manga using its title page URL, then Refresh after new chapters are published. Safety limits stop a manual run before Max Stamina, the configured farm target, or an hourly refill window. Each confirmed reaction restores 2 Stamina and is recorded once for the current 12-hour reward cycle.',
+    title: uiText('Chapter farming guide'),
+    body: uiText('Manual posts the requested number of chapter reactions immediately. Automatic only permits Progression to use Chapters as a fallback; Allow Chapter fallback must also be enabled in Progression.\n\nAdd a manga using its title page URL, then Refresh after new chapters are published. Safety limits stop a manual run before Max Stamina, the configured farm target, or an hourly refill window. Each confirmed reaction restores 2 Stamina and is recorded once for the current 12-hour reward cycle.'),
   },
 });
 
@@ -161,8 +163,11 @@ function addPageHelpTooltips(root, descriptions = {}) {
     const label = row.querySelector('.form-tree-label')?.textContent?.replace(/\s+/g, ' ').trim();
     if (!label) continue;
     const control = row.querySelector('input, select, button');
-    row.title = descriptions[control?.id]
-      || `${label}: configure how this page behaves. Disabled rows do not apply to the selected module or parent option.`;
+    row.title = descriptions[control?.id] ? uiText(descriptions[control.id])
+      : uiText("{0}: configure how this page behaves. Disabled rows do not apply to the selected module or parent option.", label);
+    for (const item of row.querySelectorAll('input, select, button')) {
+      if (descriptions[item.id]) item.title = uiText(descriptions[item.id]);
+    }
   }
 }
 
@@ -206,12 +211,14 @@ addPageHelpTooltips(document.getElementById('subviewHomeGeneral'), {
 });
 addPageHelpTooltips(document.getElementById('subviewHomeEquipment'), {
   inputAttackOvershoot: 'Adaptive mode may exceed the remaining target damage by at most this percentage when choosing a normal hit.',
+  chkAvoidArtemisCurse: 'Track Artemis marks reported by your attacks. While marked, use a normal hit and skip class abilities until the marked turns are spent.',
+  selectArtemisCurseHit: 'Normal hit to use while marked. The configured normal attack cap and available Stamina still apply; a smaller affordable hit is used if needed.',
   chkAdaptiveFailSafe: 'Force normal attacks to x1 after the configured target-progress threshold is reached.',
   inputAdaptiveFailSafePercent: 'The target contribution percentage at which Force x1 begins. This only applies when Force x1 near target is enabled.',
-  selectAttackModule: 'Fixed uses the selected hit. Adaptive uses learned damage to choose a hit for the remaining target.',
+  selectAttackMode: 'Fixed uses the selected hit. Adaptive uses learned damage to choose a hit for the remaining target.',
   selectFixedAttack: 'The normal hit requested in Fixed mode, with a smaller affordable hit when needed.',
-  selectAdaptiveMaxAttack: 'Largest normal hit Adaptive may choose. Class abilities have separate permissions.',
-  chkRequireTargetStamina: 'Wait for an allowed refill if current Stamina cannot reach the target damage. Chapter fallback and potions remain available.',
+  selectMaxAttack: 'Largest normal hit Adaptive may choose. Class abilities have separate permissions.',
+  chkAdaptiveRequireTargetStamina: 'Wait for an allowed refill if current Stamina cannot reach the target damage. Chapter fallback and potions remain available.',
   chkAllowClassAbilities: 'Allow only abilities you have classified and enabled. Select and Passive are never executed.',
 });
 addPageHelpTooltips(document.getElementById('subviewStaminaGeneral'));
@@ -253,6 +260,7 @@ function replaceMapOptions(select, maps, preferred = null) {
 
 function updateGeneralMaps(preferredMap = null, preferredDungeonMap = null, preferredGateMap = null, preferredEventMap = null) {
   const module = selectGeneralModule?.value || 'idle';
+
   const dungeonOnly = module === 'dungeons';
   const gateOnly = module === 'gates';
   const eventOnly = module === 'event';
@@ -264,6 +272,8 @@ function updateGeneralMaps(preferredMap = null, preferredDungeonMap = null, pref
     }
     if (select) select.disabled = !enabled;
   };
+  const customRunSelect = document.getElementById('selectSetupCustomRun');
+  setModuleAvailability(customRunSelect?.closest('.form-tree-row'), customRunSelect, module === 'custom_runs');
   setModuleAvailability(rowGeneralMap, selectGeneralMap, gateOnly);
   setModuleAvailability(rowGeneralDungeonMap, selectGeneralDungeonMap, dungeonOnly);
   setModuleAvailability(rowGeneralGateMap, selectGeneralGateMap, false);
@@ -276,11 +286,17 @@ function updateGeneralMaps(preferredMap = null, preferredDungeonMap = null, pref
 }
 
 function updateAutoFarmIsolationUi() {
-  const isolated = selectGeneralModule?.value === 'auto_farm';
+  const isolated = ['auto_farm', 'pvp'].includes(selectGeneralModule?.value);
+  const progressionProfileUnused = isolated || selectGeneralModule?.value === 'custom_runs';
   const progressionProfileRow = selectProgressionProfileSetup?.closest('.form-tree-row');
-  progressionProfileRow?.classList.toggle('module-setting-disabled', isolated);
-  progressionProfileRow?.setAttribute('aria-disabled', String(isolated));
-  if (selectProgressionProfileSetup) selectProgressionProfileSetup.disabled = isolated;
+  progressionProfileRow?.classList.toggle('module-setting-disabled', progressionProfileUnused);
+  progressionProfileRow?.setAttribute('aria-disabled', String(progressionProfileUnused));
+  if (selectProgressionProfileSetup) selectProgressionProfileSetup.disabled = progressionProfileUnused;
+  const combatProfileUnused = isolated || selectGeneralModule?.value === 'custom_runs';
+  const combatProfileRow = selectCombatProfileSetup?.closest('.form-tree-row');
+  combatProfileRow?.classList.toggle('module-setting-disabled', combatProfileUnused);
+  combatProfileRow?.setAttribute('aria-disabled', String(combatProfileUnused));
+  if (selectCombatProfileSetup) selectCombatProfileSetup.disabled = combatProfileUnused;
   for (const sectionId of ['sectionGeneralStamina', 'sectionGeneralHealth', 'sectionGeneralMana']) {
     const section = document.getElementById(sectionId);
     if (!section) continue;
@@ -307,7 +323,7 @@ function autoFarmServerTargetsConfig() {
 
 function renderAutoFarmProgress(state) {
   if (autoFarmServerState) {
-    autoFarmServerState.textContent = state?.enabled === true ? 'Running' : 'Paused';
+    autoFarmServerState.textContent = state?.enabled === true ? uiText('Running') : uiText('Paused');
     autoFarmServerState.classList.toggle('is-running', state?.enabled === true);
   }
   if (!autoFarmProgressGrid) return;
@@ -346,7 +362,7 @@ function renderAutoFarmServerTargets(state) {
   if (!autoFarmServerTargetsContent) return;
   autoFarmServerTargetDrafts = new Map((state?.targets || []).map(target => [String(target.targetId), { ...target }]));
   if (autoFarmServerTargetDrafts.size === 0) {
-    const empty = document.createElement('div'); empty.className = 'empty-state'; empty.textContent = 'No server Auto Farm targets have been added yet.';
+    const empty = document.createElement('div'); empty.className = 'empty-state'; empty.textContent = uiText('No server Auto Farm targets have been added yet.');
     autoFarmServerTargetsContent.replaceChildren(empty); return;
   }
   const groups = new Map();
@@ -362,22 +378,22 @@ function renderAutoFarmServerTargets(state) {
     group.className = 'auto-farm-target-group';
     group.open = true;
     const summary = document.createElement('summary');
-    summary.textContent = area?.label || targets[0]?.[1]?.areaName || 'Unassigned targets';
+    summary.textContent = area?.label || targets[0]?.[1]?.areaName || uiText('Unassigned targets');
     group.append(summary);
     const table = document.createElement('div'); table.className = 'auto-farm-server-target-table';
     const header = document.createElement('div'); header.className = 'auto-farm-server-target-row auto-farm-server-target-header';
-    for (const [label, title] of [['Monster', 'Server target monster'], ['ID', 'Server monster ID'], ['Damage', 'Minimum damage target'], ['Stack', 'Maximum stack per hit'], ['Enabled', 'Send IS_ENABLED=1 when checked, otherwise 0'], ['', 'Remove target from server Auto Farm']]) {
-      const cell = document.createElement('span'); cell.textContent = label; cell.title = title; header.append(cell);
+    for (const [label, title] of [[uiText('Monster'), uiText('Server target monster')], [uiText('ID'), uiText('Server monster ID')], [uiText('Damage'), uiText('Minimum damage target')], [uiText('Stack'), uiText('Maximum stack per hit')], [uiText('Enabled'), uiText('Send IS_ENABLED=1 when checked, otherwise 0')], ['', uiText('Remove target from server Auto Farm')]]) {
+      const cell = document.createElement('span'); cell.textContent = label; cell.title = uiText(title); header.append(cell);
     }
     table.append(header);
     for (const [targetId, target] of targets) {
     const row = document.createElement('div'); row.className = 'auto-farm-server-target-row';
-    const name = document.createElement('span'); name.textContent = target.monsterName || `Monster ${target.monsterId}`; name.title = name.textContent;
+    const name = document.createElement('span'); name.textContent = target.monsterName || uiText("Monster {0}", target.monsterId); name.title = name.textContent;
     const id = document.createElement('span'); id.textContent = target.monsterId;
-    const damage = document.createElement('input'); damage.type = 'number'; damage.min = '0'; damage.value = target.minDamage || 0; damage.className = 'tree-input-sm'; damage.title = 'Minimum damage sent with this server target.';
-    const stack = document.createElement('input'); stack.type = 'number'; stack.min = '1'; stack.max = '250'; stack.value = target.maxStack || 1; stack.className = 'tree-input-sm'; stack.title = 'Maximum server Auto Farm stack for this target.';
-    const enabled = document.createElement('input'); enabled.type = 'checkbox'; enabled.className = 'tree-checkbox'; enabled.checked = target.enabled === true; enabled.title = 'Checked sends IS_ENABLED=1; unchecked sends IS_ENABLED=0.';
-    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'btn btn-sm auto-farm-remove-target'; remove.append(createLucideIcon('trash-2')); remove.title = 'Remove this target from server Auto Farm'; remove.setAttribute('aria-label', remove.title);
+    const damage = document.createElement('input'); damage.type = 'number'; damage.min = '0'; damage.value = target.minDamage || 0; damage.className = 'tree-input-sm'; damage.title = uiText('Minimum damage sent with this server target.');
+    const stack = document.createElement('input'); stack.type = 'number'; stack.min = '1'; stack.max = '250'; stack.value = target.maxStack || 1; stack.className = 'tree-input-sm'; stack.title = uiText('Maximum server Auto Farm stack for this target.');
+    const enabled = document.createElement('input'); enabled.type = 'checkbox'; enabled.className = 'tree-checkbox'; enabled.checked = target.enabled === true; enabled.title = uiText('Checked sends IS_ENABLED=1; unchecked sends IS_ENABLED=0.');
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'btn btn-sm auto-farm-remove-target'; remove.append(createLucideIcon('trash-2')); remove.title = uiText('Remove this target from server Auto Farm'); remove.setAttribute('aria-label', remove.title);
     const update = () => autoFarmServerTargetDrafts.set(targetId, { ...target, minDamage: nonNegativeInputValue(damage), maxStack: Math.min(250, Math.max(1, nonNegativeInputValue(stack))), enabled: enabled.checked });
     for (const control of [damage, stack, enabled]) control.addEventListener('change', update);
     remove.addEventListener('click', async () => {
@@ -405,17 +421,17 @@ function renderAutoFarmServerTargets(state) {
 async function loadAutoFarmServerState(force = false) {
   if (!activeAccount) return;
   const requestToken = accountRequestToken();
-  if (autoFarmServerTargetsContent) autoFarmServerTargetsContent.innerHTML = '<div class="empty-state">Reading server Auto Farm targets…</div>';
+  if (autoFarmServerTargetsContent) autoFarmServerTargetsContent.innerHTML = ("<div class=\"empty-state\">" + uiText("Reading server Auto Farm targets…") + "</div>");
   const result = await window.botAPI.getAutoFarmState(force === true);
   if (!isCurrentAccountRequest(requestToken)) return;
   if (!result?.success) {
     if (autoFarmServerTargetsContent) autoFarmServerTargetsContent.innerHTML = '<div class="empty-state"></div>';
-    if (autoFarmServerTargetsContent?.firstElementChild) autoFarmServerTargetsContent.firstElementChild.textContent = result?.error || 'Auto Farm state is unavailable.';
+    if (autoFarmServerTargetsContent?.firstElementChild) autoFarmServerTargetsContent.firstElementChild.textContent = result?.error || uiText('Auto Farm state is unavailable.');
     if (autoFarmProgressGrid) {
-      const empty = document.createElement('div'); empty.className = 'empty-state'; empty.textContent = result?.error || 'Auto Farm progress is unavailable.';
+      const empty = document.createElement('div'); empty.className = 'empty-state'; empty.textContent = result?.error || uiText('Auto Farm progress is unavailable.');
       autoFarmProgressGrid.replaceChildren(empty);
     }
-    if (autoFarmServerState) autoFarmServerState.textContent = 'Unavailable';
+    if (autoFarmServerState) autoFarmServerState.textContent = uiText('Unavailable');
     return;
   }
   const settings = result.state?.settings || {};
@@ -437,27 +453,13 @@ function setAutoFarmSettingsDirty(dirty = true) {
   autoFarmSettingsDirty = dirty === true;
   btnSaveAutoFarm?.classList.toggle('has-pending-changes', autoFarmSettingsDirty);
   if (btnSaveAutoFarm) btnSaveAutoFarm.title = autoFarmSettingsDirty
-    ? 'Save changed Auto Farm settings to the server'
-    : 'Auto Farm settings match the server';
+    ? uiText('Save changed Auto Farm settings to the server')
+    : uiText('Auto Farm settings match the server');
 }
 
 async function saveAutoFarmSettings() {
   if (btnSaveAutoFarm) btnSaveAutoFarm.disabled = true;
   try {
-    const serverByName = new Map([...autoFarmServerTargetDrafts.values()].map(target => [autoFarmNameKey(target.monsterName), target]));
-    const mapPatches = {};
-    for (const [areaKey, entries] of Object.entries(autoFarmConfig.maps || {})) {
-      for (const [monsterKey, entry] of Object.entries(entries || {})) {
-        const serverTarget = serverByName.get(autoFarmNameKey(entry.name || monsterKey));
-        if (!serverTarget) continue;
-        mapPatches[areaKey] ||= {};
-        mapPatches[areaKey][monsterKey] = {
-          enabled: serverTarget.enabled === true,
-          targetDamage: Math.max(0, Math.trunc(Number(serverTarget.minDamage) || 0)),
-          maxStack: Math.min(250, Math.max(1, Math.trunc(Number(serverTarget.maxStack) || 1))),
-        };
-      }
-    }
     const result = await updateCanonicalConfig({
       autoFarm: {
         settings: {
@@ -473,14 +475,13 @@ async function saveAutoFarmSettings() {
           autoLootToLevel: chkAutoFarmLootLevel?.checked === true,
           expLeftPercent: percentageInputValue(inputAutoFarmExpLeft),
         },
-        maps: mapPatches,
         targetPolicies: autoFarmServerTargetsConfig(),
       },
     });
     if (result?.success) {
       autoFarmConfig = result.config?.autoFarm || autoFarmConfig;
       const serverResult = await window.botAPI.saveAutoFarmToServer();
-      if (!serverResult?.success) throw new Error(serverResult?.error || 'Server Auto Farm save failed');
+      if (!serverResult?.success) throw new Error(serverResult?.error || uiText('Server Auto Farm save failed'));
       renderAutoFarmServerTargets(serverResult.state);
       setAutoFarmSettingsDirty(false);
       appendLog('INFO', `Auto Farm settings applied to the server (${serverResult.targets} enabled target(s)).`);
